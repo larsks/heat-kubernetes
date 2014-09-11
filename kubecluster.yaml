@@ -95,15 +95,22 @@ resources:
       key_name:
         get_param: ssh_key_name
       user_data_format: RAW
-      user_data: |
-        #!/bin/sh
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/sh
 
-        sed -i '/^KUBE_API_ADDRESS=/ s/=.*/="0.0.0.0"/' /etc/kubernetes/apiserver
-        
-        for service in etcd kube-apiserver kube-controller-manager; do
-          systemctl enable $service
-          systemctl start $service
-        done
+            sed -i '
+              /^KUBE_API_ADDRESS=/ s/=.*/="0.0.0.0"/
+              /^MINION_ADDRESSES=/ s/=.*/"$KUBE_CLIENTS"/
+            ' /etc/kubernetes/apiserver
+
+            for service in etcd kube-apiserver kube-controller-manager; do
+              systemctl enable $service
+              systemctl start $service
+            done
+          params:
+            "$KUBE_CLIENTS": {"Fn::Join": [", ", {get_attr: [kube_clients, kube_node_ip]}]}
       networks:
         - port:
             get_resource: kube_master_eth0
@@ -143,4 +150,12 @@ resources:
           fixed_network_id: {get_resource: fixed_network}
           fixed_subnet_id: {get_resource: fixed_subnet}
           kube_master_ip: {get_attr: [kube_master_eth0, fixed_ips, 0, ip_address]}
+
+outputs:
+
+  kube_master:
+    value: {get_attr: [kube_master_floating, floating_ip_address]}
+
+  kube_clients:
+    value: {"Fn::Join": [", ", {get_attr: [kube_clients, kube_node_ip]}]}
 
