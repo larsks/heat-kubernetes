@@ -1,0 +1,100 @@
+heat_template_version: 2013-05-23
+
+parameters:
+
+  server_image:
+    type: string
+    default: fedora-20-x86_64-updated
+    description: glance image used to boot the server
+
+  server_flavor:
+    type: string
+    default: m1.small
+    description: flavor to use when booting the server
+
+  external_network_id:
+    type: string
+    description: uuid of a network to use for floating ip addresses
+
+  ssh_key_name:
+    type: string
+    description: name of ssh key to be provisioned on our server
+    default: lars
+
+  kube_master_ip:
+    type: string
+  fixed_network_id:
+    type: string
+  fixed_subnet_id:
+    type: string
+  external_network_id:
+    type: string
+
+resources:
+
+  secgroup_all_open:
+    type: "OS::Neutron::SecurityGroup"
+    properties:
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+        - protocol: udp
+
+  kube_node:
+    type: "OS::Nova::Server"
+    properties:
+      image:
+        get_param: server_image
+      flavor:
+        get_param: server_flavor
+      key_name:
+        get_param: ssh_key_name
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/sh
+
+            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' /etc/kubernetes/config
+
+            sed -i '
+              /^KUBE_API_ADDRESS=/ s/=.*/="$KUBE_MASTER_IP"/
+              /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
+            ' /etc/kubernetes/apiserver
+
+            rpm -e --nodeps docker
+            yum -y install docker-io
+
+            for service in kubelet kube-proxy; do
+              systemctl enable $service
+              systemctl start $service
+            done
+
+            systemctl enable docker.socket
+            systemctl start docker.socket
+          params:
+            "$KUBE_MASTER_IP":
+              get_param: kube_master_ip
+      networks:
+        - port:
+            get_resource: kube_node_eth0
+
+  kube_node_eth0:
+    type: "OS::Neutron::Port"
+    properties:
+      network_id:
+        get_param: fixed_network_id
+      security_groups:
+        - get_resource: secgroup_all_open
+      fixed_ips:
+        - subnet_id:
+            get_param: fixed_subnet_id
+
+  wordpress_server_floating:
+    type: "OS::Neutron::FloatingIP"
+    properties:
+      floating_network_id:
+        get_param: external_network_id
+      port_id:
+        get_resource: kube_node_eth0
+
