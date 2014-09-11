@@ -98,3 +98,8 @@ resources:
       port_id:
         get_resource: kube_node_eth0
 
+outputs:
+
+  kube_node_ip:
+    value: {get_attr: [kube_node_eth0, fixed_ips, 0, ip_address]}
+
