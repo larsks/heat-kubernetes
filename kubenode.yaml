@@ -55,23 +55,31 @@ resources:
           template: |
             #!/bin/sh
 
+            yum -y upgrade
+            yum -y install jq dnf dnf-plugins-core
+            dnf -y copr enable walters/atomic-next
+            dnf -y copr enabled larsks/fakedocker
+
+            sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
+
+            yum -y install kubernetes
+            myhostname=$(ip route get $KUBE_MASTER_IP | awk '/src/ {print $5}')
+
             sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' /etc/kubernetes/config
+            sed -i '
+              /^MINION_ADDRESS=/ s/=.*/="0.0.0.0"/
+              /^MINION_HOSTNAME=/ s/=.*/="'"$myhostname"'"/
+            ' /etc/kubernetes/kubelet
 
             sed -i '
               /^KUBE_API_ADDRESS=/ s/=.*/="$KUBE_MASTER_IP"/
               /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
             ' /etc/kubernetes/apiserver
 
-            rpm -e --nodeps docker
-            yum -y install docker-io
-
-            for service in kubelet kube-proxy; do
+            for service in docker.socket kubelet kube-proxy; do
               systemctl enable $service
               systemctl start $service
             done
-
-            systemctl enable docker.socket
-            systemctl start docker.socket
           params:
             "$KUBE_MASTER_IP":
               get_param: kube_master_ip
