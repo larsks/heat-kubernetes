@@ -117,6 +117,8 @@ resources:
   #
   kube_master:
     type: "OS::Nova::Server"
+    depends_on:
+      - extrouter_inside
     properties:
       image:
         get_param: server_image
