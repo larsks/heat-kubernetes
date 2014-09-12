@@ -1,5 +1,10 @@
 heat_template_version: 2013-05-23
 
+description: >
+  This template will boot a Kubernetes cluster with one or more
+  minions (as specified by the number_of_minions parameter, which
+  defaults to "2").
+
 parameters:
 
   server_image:
@@ -78,13 +83,28 @@ resources:
   # sorts.
   #
 
-  secgroup_all_open:
+  secgroup_base:
     type: "OS::Neutron::SecurityGroup"
     properties:
       rules:
         - protocol: icmp
         - protocol: tcp
-        - protocol: udp
+          port_range_min: 22
+          port_range_max: 22
+
+  secgroup_kubernetes:
+    type: "OS::Neutron::SecurityGroup"
+    properties:
+      rules:
+        - protocol: tcp
+          port_range_min: 8080
+          port_range_max: 8080
+        - protocol: tcp
+          port_range_min: 4001
+          port_range_max: 4001
+        - protocol: tcp
+          port_range_min: 7001
+          port_range_max: 7001
 
   ######################################################################
   #
@@ -174,7 +194,8 @@ resources:
       network_id:
         get_resource: fixed_network
       security_groups:
-        - get_resource: secgroup_all_open
+        - get_resource: secgroup_base
+        - get_resource: secgroup_kubernetes
       fixed_ips:
         - subnet_id:
             get_resource: fixed_subnet
@@ -196,7 +217,6 @@ resources:
       resource_def:
         type: kubenode.yaml
         properties:
-          external_network_id: {get_param: external_network_id}
           ssh_key_name: {get_param: ssh_key_name}
           server_image: {get_param: server_image}
           server_flavor: {get_param: server_flavor}
@@ -210,5 +230,5 @@ outputs:
     value: {get_attr: [kube_master_floating, floating_ip_address]}
 
   kube_minions:
-    value: {"Fn::Join": [", ", {get_attr: [kube_minions, kube_node_ip]}]}
+    value: {get_attr: [kube_minions, kube_node_ip]}
 

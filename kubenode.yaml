@@ -1,5 +1,10 @@
 heat_template_version: 2013-05-23
 
+description: >
+  This is a nested stack that defines a single Kubernetes minion,
+  based on a vanilla Fedora 20 cloud image.  This stack is included by
+  a ResourceGroup resource in the parent template (kubecluster.yaml).
+
 parameters:
 
   server_image:
@@ -12,26 +17,25 @@ parameters:
     default: m1.small
     description: flavor to use when booting the server
 
-  external_network_id:
-    type: string
-    description: uuid of a network to use for floating ip addresses
-
   ssh_key_name:
     type: string
     description: name of ssh key to be provisioned on our server
     default: lars
 
+  # The following are all generated in the parent template.
   kube_master_ip:
     type: string
+    description: IP address of the Kubernetes master server.
   fixed_network_id:
     type: string
+    description: Network from which to allocate fixed addresses.
   fixed_subnet_id:
     type: string
-  external_network_id:
-    type: string
+    description: Subnet from which to allocate fixed addresses.
 
 resources:
 
+  # I am lazy, so this opens up all ports.
   secgroup_all_open:
     type: "OS::Neutron::SecurityGroup"
     properties:
