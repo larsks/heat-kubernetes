@@ -8,6 +8,11 @@ specify when creating the stack.
 The cluster is based on Fedora 20, and makes use of the
 [walters/atomic-next][] [COPR][] repository.
 
+These templates are designed to work with the Icehouse version of
+Heat, with https://review.openstack.org/#/c/121139/ applied (this
+corrects a bug with template validation when using the "Fn::Join"
+function).
+
 [heat]: https://wiki.openstack.org/wiki/Heat
 [kubernetes]: https://github.com/GoogleCloudPlatform/kubernetes
 [walters/atomic-next]: https://copr.fedoraproject.org/coprs/walters/atomic-next/
