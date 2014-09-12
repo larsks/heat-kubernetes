@@ -4,7 +4,7 @@ parameters:
 
   server_image:
     type: string
-    default: fedora-20-kubernetes
+    default: fedora-20-x86_64-updated
     description: glance image used to boot the server
 
   server_flavor:
@@ -25,6 +25,11 @@ parameters:
     type: string
     description: name of ssh key to be provisioned on our server
     default: lars
+
+  number_of_minions:
+    type: string
+    description: how many kubernetes minions to spawn
+    default: 2
 
 resources:
 
@@ -87,6 +92,8 @@ resources:
   #
   kube_master:
     type: "OS::Nova::Server"
+    depends_on:
+      - extrouter_inside
     properties:
       image:
         get_param: server_image
@@ -95,22 +102,68 @@ resources:
       key_name:
         get_param: ssh_key_name
       user_data_format: RAW
-      user_data:
-        str_replace:
-          template: |
-            #!/bin/sh
+      user_data: |
+        #!/bin/sh
 
-            sed -i '
-              /^KUBE_API_ADDRESS=/ s/=.*/="0.0.0.0"/
-              /^MINION_ADDRESSES=/ s/=.*/"$KUBE_CLIENTS"/
-            ' /etc/kubernetes/apiserver
+        yum -y upgrade
+        yum -y install jq dnf dnf-plugins-core
+        dnf -y copr enable walters/atomic-next
+        dnf -y copr enabled larsks/fakedocker
 
-            for service in etcd kube-apiserver kube-controller-manager; do
-              systemctl enable $service
-              systemctl start $service
-            done
-          params:
-            "$KUBE_CLIENTS": {"Fn::Join": [", ", {get_attr: [kube_clients, kube_node_ip]}]}
+        sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
+
+        yum -y install kubernetes
+
+        metadata=/etc/metadata.json
+        curl -o $metadata -s http://169.254.169.254/openstack/latest/meta_data.json
+
+        num_minions=$(
+          jq .meta.kube_minions -r  < $metadata |
+          jq 'length')
+
+        minions=""
+        for ((i=0; i<num_minions; i++)); do
+          minion=$(
+            jq .meta.kube_minions -r < $metadata |
+            jq ".[$i]" -r)
+          minions="${minions}${minions:+,}${minion}"
+        done
+
+        sed -i '
+          /^KUBE_API_ADDRESS=/ s/=.*/="0.0.0.0"/
+          /^MINION_ADDRESSES=/ s/=.*/="'"$minions"'"/
+          /^MINION_HOSTNAME=/ s/=.*/="'"$myhostname"'"/
+        ' /etc/kubernetes/apiserver
+
+        for service in etcd kube-apiserver kube-scheduler kube-controller-manager; do
+          systemctl enable $service
+          systemctl start $service
+        done
+
+        cat > /root/apache.json <<EOF
+        {
+          "id": "apache",
+          "desiredState": {
+            "manifest": {
+              "version": "v1beta1",
+              "id": "apache-1",
+              "containers": [{
+                "name": "master",
+                "image": "fedora/apache",
+                "ports": [{
+                  "containerPort": 80,
+                  "hostPort": 80
+                }]
+              }]
+            }
+          },
+          "labels": {
+            "name": "apache"
+          }
+        }
+        EOF
+      metadata:
+        kube_minions: {get_attr: [kube_minions, kube_node_ip]}
       networks:
         - port:
             get_resource: kube_master_eth0
@@ -136,10 +189,10 @@ resources:
       port_id:
         get_resource: kube_master_eth0
 
-  kube_clients:
+  kube_minions:
     type: "OS::Heat::ResourceGroup"
     properties:
-      count: 1
+      count: {get_param: number_of_minions}
       resource_def:
         type: kubenode.yaml
         properties:
@@ -156,6 +209,6 @@ outputs:
   kube_master:
     value: {get_attr: [kube_master_floating, floating_ip_address]}
 
-  kube_clients:
-    value: {"Fn::Join": [", ", {get_attr: [kube_clients, kube_node_ip]}]}
+  kube_minions:
+    value: {"Fn::Join": [", ", {get_attr: [kube_minions, kube_node_ip]}]}
 
