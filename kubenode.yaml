@@ -22,6 +22,10 @@ parameters:
     description: name of ssh key to be provisioned on our server
     default: lars
 
+  external_network_id:
+    type: string
+    description: uuid of a network to use for floating ip addresses
+
   # The following are all generated in the parent template.
   kube_master_ip:
     type: string
@@ -102,8 +106,19 @@ resources:
         - subnet_id:
             get_param: fixed_subnet_id
 
+  kube_node_floating:
+    type: "OS::Neutron::FloatingIP"
+    properties:
+      floating_network_id:
+        get_param: external_network_id
+      port_id:
+        get_resource: kube_node_eth0
+
 outputs:
 
   kube_node_ip:
     value: {get_attr: [kube_node_eth0, fixed_ips, 0, ip_address]}
+  
+  kube_node_external_ip:
+    value: {get_attr: [kube_node_floating, floating_ip_address]}
 
