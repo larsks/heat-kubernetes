@@ -70,7 +70,9 @@ resources:
 
             yum -y upgrade
             yum -y install jq dnf dnf-plugins-core \
-              openvswitch bridge-utils docker-io
+              openvswitch bridge-utils docker-io \
+              git python-netifaces python-requests \
+              tcpdump
 
             dnf -y copr enable walters/atomic-next
             dnf -y copr enabled larsks/fakedocker
@@ -88,6 +90,7 @@ resources:
             IPADDR=${bridge_address}
             NETMASK=255.255.255.0
             ONBOOT=yes
+            STP=yes
             EOF
 
             cat > $netconf/ifcfg-obr0 <<EOF
@@ -95,6 +98,8 @@ resources:
             DEVICETYPE=ovs
             TYPE=OVSBridge
             ONBOOT=yes
+            BRIDGE=kbr0
+            STP=true
             EOF
 
             cat > $netconf/route-kbr0 <<EOF
@@ -118,6 +123,14 @@ resources:
               /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
             ' /etc/kubernetes/apiserver
 
+            git clone http://github.com/larsks/linkmanager.git \
+              /opt/linkmanager
+            cp /opt/linkmanager/linkmanager.service \
+              /etc/systemd/system/linkmanager.service
+            cat > /etc/sysconfig/linkmanager <<EOF
+            OPTIONS="-s http://$KUBE_MASTER_IP:4001 -v -b obr0"
+            EOF
+
             # start bridges first
             systemctl enable openvswitch
             systemctl start openvswitch
@@ -125,7 +138,7 @@ resources:
             ifup obr0
 
             # then other services
-            for service in docker.socket kubelet kube-proxy; do
+            for service in docker.socket kubelet kube-proxy linkmanager; do
               systemctl enable $service
               systemctl start $service
             done
