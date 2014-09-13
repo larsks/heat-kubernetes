@@ -63,14 +63,48 @@ resources:
           template: |
             #!/bin/sh
 
+            BASE=10.251
+
+            yum -y remove NetworkManager
+            chkconfig network on
+
             yum -y upgrade
-            yum -y install jq dnf dnf-plugins-core
+            yum -y install jq dnf dnf-plugins-core \
+              openvswitch bridge-utils docker-io
+
             dnf -y copr enable walters/atomic-next
             dnf -y copr enabled larsks/fakedocker
-
             sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
-
             yum -y install kubernetes
+
+            myip=$(ip addr show eth0 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
+            myip_last_octet=${myip##*.}
+            bridge_address="${BASE}.${myip_last_octet}.1"
+            netconf=/etc/sysconfig/network-scripts
+
+            cat > $netconf/ifcfg-kbr0 <<EOF
+            DEVICE=kbr0
+            TYPE=Bridge
+            IPADDR=${bridge_address}
+            NETMASK=255.255.255.0
+            ONBOOT=yes
+            EOF
+
+            cat > $netconf/ifcfg-obr0 <<EOF
+            DEVICE=obr0
+            DEVICETYPE=ovs
+            TYPE=OVSBridge
+            ONBOOT=yes
+            EOF
+
+            cat > $netconf/route-kbr0 <<EOF
+            ${BASE}.0.0/16 dev kbr0 scope link src ${bridge_address}
+            EOF
+
+            cat > /etc/sysconfig/docker <<EOF
+            OPTIONS="--selinux-enabled -b kbr0"
+            EOF
+
             myhostname=$(ip route get $KUBE_MASTER_IP | awk '/src/ {print $5}')
 
             sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' /etc/kubernetes/config
@@ -84,6 +118,13 @@ resources:
               /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
             ' /etc/kubernetes/apiserver
 
+            # start bridges first
+            systemctl enable openvswitch
+            systemctl start openvswitch
+            ifup kbr0
+            ifup obr0
+
+            # then other services
             for service in docker.socket kubelet kube-proxy; do
               systemctl enable $service
               systemctl start $service
