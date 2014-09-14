@@ -107,7 +107,7 @@ resources:
             EOF
 
             cat > /etc/sysconfig/docker <<EOF
-            OPTIONS="--selinux-enabled -b kbr0"
+            OPTIONS="--selinux-enabled -b kbr0 --mtu 1450"
             EOF
 
             myhostname=$(ip route get $KUBE_MASTER_IP | awk '/src/ {print $5}')
