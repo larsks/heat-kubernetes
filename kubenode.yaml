@@ -99,6 +99,11 @@ resources:
             NETMASK=255.255.255.0
             ONBOOT=yes
             STP=yes
+
+            # With the default forwarding delay of 15 seconds,
+            # many operations in a 'docker build' will simply timeout
+            # before the bridge starts forwarding.
+            DELAY=2
             EOF
 
             # This bridge will handle VXLAN tunnels
