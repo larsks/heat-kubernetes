@@ -12,6 +12,11 @@ across the minions, such that any Docker container can contact any
 other Docker container directly, regardless of the host on which they
 are running.
 
+The Kubernetes cluster created by these templates is able to
+successfully run the [guestbook example][guestbook].
+
+[guestbook]: https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples/guestbook
+
 The cluster is based on Fedora 20, and makes use of the
 [walters/atomic-next][] [COPR][] repository.
 
