@@ -26,7 +26,7 @@ parameters:
     type: string
     description: uuid of a network to use for floating ip addresses
 
-  minion_address_base:
+  bridge_address_base:
     type: string
     description: >
       first two octets of a /16 network to use for minion
@@ -79,7 +79,7 @@ resources:
             yum -y install jq dnf dnf-plugins-core \
               openvswitch bridge-utils docker-io \
               git python-netifaces python-requests \
-              tcpdump
+              tcpdump python-netifaces python-setuptools
 
             # enable kubernetes repository
             dnf -y copr enable walters/atomic-next
@@ -112,7 +112,7 @@ resources:
             EOF
 
             cat > $netconf/route-kbr0 <<EOF
-            ${BASE}.0.0/16 dev kbr0 scope link src ${bridge_address}
+            ${bridge_address_base}.0.0/16 dev kbr0 scope link src ${bridge_address}
             EOF
 
             # Container interface MTU must be reduced in order to
@@ -137,8 +137,11 @@ resources:
             # for minion overlay network.
             git clone http://github.com/larsks/linkmanager.git \
               /opt/linkmanager
-            cp /opt/linkmanager/linkmanager.service \
-              /etc/systemd/system/linkmanager.service
+            (
+              cd /opt/linkmanager
+              python setup.py install
+              cp linkmanager.service /etc/systemd/system/linkmanager.service
+            )
             cat > /etc/sysconfig/linkmanager <<EOF
             OPTIONS="-s http://$KUBE_MASTER_IP:4001 -v -b obr0"
             EOF
