@@ -26,6 +26,13 @@ parameters:
     type: string
     description: uuid of a network to use for floating ip addresses
 
+  bridge_address_base:
+    type: string
+    description: >
+      first two octets of a /16 network to use for minion
+      addresses.
+    default: 10.251
+
   # The following are all generated in the parent template.
   kube_master_ip:
     type: string
@@ -63,20 +70,62 @@ resources:
           template: |
             #!/bin/sh
 
+            bridge_address_base="$BRIDGE_ADDRESS_BASE"
+
+            yum -y remove NetworkManager
+            chkconfig network on
+
             yum -y upgrade
-            yum -y install jq dnf dnf-plugins-core
+            yum -y install jq dnf dnf-plugins-core \
+              openvswitch bridge-utils docker-io \
+              git python-netifaces python-requests \
+              tcpdump python-netifaces python-setuptools
+
+            # enable kubernetes repository
             dnf -y copr enable walters/atomic-next
-            dnf -y copr enabled larsks/fakedocker
-
             sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
-
             yum -y install kubernetes
-            myhostname=$(ip route get $KUBE_MASTER_IP | awk '/src/ {print $5}')
+
+            myip=$(ip addr show eth0 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
+            myip_last_octet=${myip##*.}
+            bridge_address="${bridge_address_base}.${myip_last_octet}.1"
+            netconf=/etc/sysconfig/network-scripts
+
+            # Docker contains are attached to this bridge
+            cat > $netconf/ifcfg-kbr0 <<EOF
+            DEVICE=kbr0
+            TYPE=Bridge
+            IPADDR=${bridge_address}
+            NETMASK=255.255.255.0
+            ONBOOT=yes
+            STP=yes
+            EOF
+
+            # This bridge will handle VXLAN tunnels
+            cat > $netconf/ifcfg-obr0 <<EOF
+            DEVICE=obr0
+            DEVICETYPE=ovs
+            TYPE=OVSBridge
+            ONBOOT=yes
+            BRIDGE=kbr0
+            STP=true
+            EOF
+
+            cat > $netconf/route-kbr0 <<EOF
+            ${bridge_address_base}.0.0/16 dev kbr0 scope link src ${bridge_address}
+            EOF
+
+            # Container interface MTU must be reduced in order to
+            # prevent fragmentation problems when vxlan header is
+            # added to a host-MTU sized packet.
+            cat > /etc/sysconfig/docker <<EOF
+            OPTIONS="--selinux-enabled -b kbr0 --mtu 1450"
+            EOF
 
             sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' /etc/kubernetes/config
             sed -i '
               /^MINION_ADDRESS=/ s/=.*/="0.0.0.0"/
-              /^MINION_HOSTNAME=/ s/=.*/="'"$myhostname"'"/
+              /^MINION_HOSTNAME=/ s/=.*/="'"$myip"'"/
             ' /etc/kubernetes/kubelet
 
             sed -i '
@@ -84,13 +133,35 @@ resources:
               /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
             ' /etc/kubernetes/apiserver
 
-            for service in docker.socket kubelet kube-proxy; do
+            # install linkmanager for managing OVS links
+            # for minion overlay network.
+            git clone http://github.com/larsks/linkmanager.git \
+              /opt/linkmanager
+            (
+              cd /opt/linkmanager
+              python setup.py install
+              cp linkmanager.service /etc/systemd/system/linkmanager.service
+            )
+            cat > /etc/sysconfig/linkmanager <<EOF
+            OPTIONS="-s http://$KUBE_MASTER_IP:4001 -v -b obr0"
+            EOF
+
+            # start bridges first
+            systemctl enable openvswitch
+            systemctl start openvswitch
+            ifup kbr0
+            ifup obr0
+
+            # then other services
+            for service in docker.socket kubelet kube-proxy linkmanager; do
               systemctl enable $service
               systemctl start $service
             done
           params:
             "$KUBE_MASTER_IP":
               get_param: kube_master_ip
+            "$BRIDGE_ADDRESS_BASE":
+              get_param: bridge_address_base
       networks:
         - port:
             get_resource: kube_node_eth0
