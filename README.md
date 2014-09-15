@@ -5,6 +5,13 @@ These [Heat][] templates will deploy an *N*-node [Kubernetes][] cluster,
 where *N* is the value of the `number_of_minions` parameter you
 specify when creating the stack.
 
+The resulting cluster has a network configuration similar to that
+produced by the Vagrant configuration distributed with Kubernetes: an
+overlay network between the minions provides a unified address space
+across the minions, such that any Docker container can contact any
+other Docker container directly, regardless of the host on which they
+are running.
+
 The cluster is based on Fedora 20, and makes use of the
 [walters/atomic-next][] [COPR][] repository.
 
