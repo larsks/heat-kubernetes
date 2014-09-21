@@ -43,6 +43,9 @@ parameters:
 
 resources:
 
+  linkmanager_key:
+    type: "OS::Heat::RandomString"
+
   ######################################################################
   #
   # network resources.  allocate a network and router for our server.
@@ -196,6 +199,7 @@ resources:
           fixed_subnet_id: {get_resource: fixed_subnet}
           kube_master_ip: {get_attr: [kube_master_eth0, fixed_ips, 0, ip_address]}
           external_network_id: {get_param: external_network_id}
+          linkmanager_key: {get_attr: [linkmanager_key, value]}
 
 outputs:
 
