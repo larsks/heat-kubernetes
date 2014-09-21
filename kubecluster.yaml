@@ -209,3 +209,6 @@ outputs:
   kube_minions:
     value: {get_attr: [kube_minions, kube_node_ip]}
 
+  kube_minions_external:
+    value: {get_attr: [kube_minions, kube_node_external_ip]}
+
