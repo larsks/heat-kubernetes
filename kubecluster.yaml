@@ -43,6 +43,18 @@ parameters:
 
 resources:
 
+  master_wait_handle:
+    type: "AWS::CloudFormation::WaitConditionHandle"
+
+  master_wait_condition:
+    type: "AWS::CloudFormation::WaitCondition"
+    depends_on:
+      - kube_master
+    properties:
+      Handle:
+        get_resource: master_wait_handle
+      Timeout: "6000"
+
   linkmanager_key:
     type: "OS::Heat::RandomString"
 
@@ -153,10 +165,14 @@ resources:
               systemctl enable $service
               systemctl start $service
             done
+
+            cfn-signal -e0 --data 'OK' -r 'Setup complete' '$WAIT_HANDLE'
           params:
             # NB: For this to work you need a version of Heat that
             # includes https://review.openstack.org/#/c/121139/
             "$MINION_ADDRESSES": {"Fn::Join": [",", {get_attr: [kube_minions, kube_node_ip]}]}
+            "$WAIT_HANDLE":
+              get_resource: master_wait_handle
       networks:
         - port:
             get_resource: kube_master_eth0
