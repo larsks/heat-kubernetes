@@ -150,7 +150,7 @@ resources:
             yum -y upgrade
             yum -y install jq dnf dnf-plugins-core
             dnf -y copr enable walters/atomic-next
-            dnf -y copr enabled larsks/fakedocker
+            dnf -y copr enable larsks/fakedocker
 
             sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
 
