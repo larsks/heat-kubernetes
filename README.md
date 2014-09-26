@@ -20,6 +20,12 @@ successfully run the [guestbook example][guestbook].
 The cluster is based on Fedora 20, and makes use of the
 [walters/atomic-next][] [COPR][] repository.
 
+**NB**: Fedora 20 initially shipped with a kernel that does not have
+the necessary support for vxlan to work correctly.  If you are using
+this image you will need to reboot your minions in order for things to
+work correctly.  You should create an updated Fedora 20 image with a
+newer kernel.
+
 These templates are designed to work with the Icehouse version of
 Heat, with https://review.openstack.org/#/c/121139/ applied (this
 corrects a bug with template validation when using the "Fn::Join"
