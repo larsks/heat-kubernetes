@@ -150,7 +150,8 @@ resources:
             OPTIONS="--selinux-enabled -b kbr0 --mtu 1450"
             EOF
 
-            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' /etc/kubernetes/config
+            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' \
+              /etc/kubernetes/config
             sed -i '
               /^MINION_ADDRESS=/ s/=.*/="0.0.0.0"/
               /^MINION_HOSTNAME=/ s/=.*/="'"$myip"'"/
@@ -189,6 +190,10 @@ resources:
               systemctl enable $service
               systemctl start $service
             done
+
+            # make fedora user a member of the docker group
+            # (so you can run docker commands as the fedora user)
+            usermod -G docker fedora
 
             cfn-signal -e0 --data 'OK' -r 'Setup complete' '$WAIT_HANDLE'
           params:
