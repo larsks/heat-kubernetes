@@ -93,12 +93,6 @@ resources:
             yum -y remove NetworkManager
             chkconfig network on
 
-            yum -y upgrade
-            yum -y install jq dnf dnf-plugins-core \
-              openvswitch bridge-utils docker-io \
-              git python-netifaces python-requests \
-              tcpdump python-netifaces python-setuptools
-
             # enable kubernetes repository
             dnf -y copr enable walters/atomic-next
             sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
@@ -107,7 +101,16 @@ resources:
             # the docker you are looking for.
             dnf -y copr enable larsks/fakedocker
 
-            yum -y install kubernetes
+            yum -y upgrade
+            yum -y install jq dnf dnf-plugins-core \
+              openvswitch bridge-utils docker-io \
+              git python-netifaces python-requests \
+              tcpdump python-netifaces python-setuptools \
+              golang-github-docker-libcontainer kubernetes \
+
+            # this is required to implement "exec" type livenessProbes in
+            # kubernetes.
+            ln -s /usr/bin/nsinit /usr/sbin/nsinit
 
             myip=$(ip addr show eth0 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
             myip_last_octet=${myip##*.}
