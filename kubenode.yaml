@@ -93,6 +93,9 @@ resources:
             yum -y remove NetworkManager
             chkconfig network on
 
+            # enable dnf command
+            yum -y install dnf-plugins-core
+
             # enable kubernetes repository
             dnf -y copr enable walters/atomic-next
             sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
@@ -102,8 +105,8 @@ resources:
             dnf -y copr enable larsks/fakedocker
 
             yum -y upgrade
-            yum -y install jq dnf dnf-plugins-core \
-              openvswitch bridge-utils docker-io \
+            yum -y install \
+              jq openvswitch bridge-utils docker-io \
               git python-netifaces python-requests \
               tcpdump python-netifaces python-setuptools \
               golang-github-docker-libcontainer kubernetes \
