@@ -40,6 +40,11 @@ parameters:
     type: string
     description: how many kubernetes minions to spawn
     default: 2
+  
+  fixed_network_cidr:
+    type: string
+    description: network range for fixed ip network
+    default: 10.0.0.0/24
 
 resources:
 
@@ -72,7 +77,7 @@ resources:
   fixed_subnet:
     type: "OS::Neutron::Subnet"
     properties:
-      cidr: 10.0.0.0/24
+      cidr: {get_param: fixed_network_cidr}
       network_id:
         get_resource: fixed_network
       dns_nameservers:
