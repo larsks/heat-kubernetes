@@ -202,44 +202,6 @@ resources:
             ifup kbr0
             ifup obr0
 
-            # sometimes symlinks in /dev/disk/by-id are missing.  see if this helps.
-            udevadm trigger
-
-            # we need to truncate the volume id, because apparently the system
-            # truncates device serial numbers to 20 characters.
-            docker_volume="$DOCKER_VOLUME"
-            docker_volume=${docker_volume::20}
-            mke2fs -m0 -L docker /dev/disk/by-id/virtio-$docker_volume
-
-            gluster_volume="$GLUSTER_VOLUME"
-            gluster_volume=${gluster_volume::20}
-            mke2fs -m0 -L gluster /dev/disk/by-id/virtio-$gluster_volume
-
-            echo "$DOCKER_VOLUME -> $docker_volume"
-            echo "$GLUSTER_VOLUME -> $gluster_volume"
-            ls -l /dev/disk/by-id/
-
-            mkdir -p /var/lib/docker /bricks
-            cat >> /etc/fstab <<EOF
-            /dev/disk/by-id/virtio-$docker_volume /var/lib/docker ext4 defaults 1 2
-            /dev/disk/by-id/virtio-$gluster_volume /bricks ext4 defaults 1 2
-            EOF
-
-            mount /var/lib/docker
-            mount /bricks
-
-            mkdir /gluster
-            cat > /etc/auto.gluster <<'EOF'
-            #!/bin/sh
-            opts="-fstype=glusterfs,nodev,nosuid"
-            echo "$opts 127.0.0.1:/$1"
-            EOF
-            chmod 755 /etc/auto.gluster
-
-            cat > /etc/auto.master.d/gluster.autofs <<EOF
-            /gluster /etc/auto.gluster
-            EOF
-
             setenforce 0
             sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
 
