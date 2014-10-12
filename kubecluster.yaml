@@ -46,6 +46,16 @@ parameters:
     description: network range for fixed ip network
     default: 10.0.0.0/24
 
+  docker_volume_size:
+    type: number
+    description: size of docker volume
+    default: 20
+
+  gluster_volume_size:
+    type: number
+    description: size of volume allocated for gluster storage
+    default: 40
+
 resources:
 
   master_wait_handle:
@@ -131,6 +141,20 @@ resources:
           port_range_min: 7001
           port_range_max: 7001
 
+  secgroup_gluster:
+    type: "OS::Neutron::SecurityGroup"
+    properties:
+      rules:
+        - protocol: tcp
+          port_range_min: 111
+          port_range_max: 111
+        - protocol: tcp
+          port_range_min: 24007
+          port_range_max: 24020
+        - protocol: tcp
+          port_range_min: 38465
+          port_range_max: 38485
+
   ######################################################################
   #
   # databases server.  this sets up a MySQL server
@@ -152,23 +176,36 @@ resources:
           template: |
             #!/bin/sh
 
-            yum -y upgrade
-            yum -y install jq dnf dnf-plugins-core
+            echo "setting up repositories"
+            yum -y install dnf-plugins-core
             dnf -y copr enable walters/atomic-next
             dnf -y copr enable larsks/fakedocker
 
             sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
 
-            yum -y install kubernetes
+            echo "installing packages"
+            yum -y upgrade
+            yum -y install kubernetes jq glusterfs-server
 
             sed -i '
               /^KUBE_API_ADDRESS=/ s/=.*/="0.0.0.0"/
               /^MINION_ADDRESSES=/ s/=.*/="$MINION_ADDRESSES"/
             ' /etc/kubernetes/apiserver
 
-            for service in etcd kube-apiserver kube-scheduler kube-controller-manager; do
+            echo "putting selinux in permissive mode"
+            setenforce 0
+            sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
+
+            echo "enabling and starting services"
+            for service in etcd kube-apiserver kube-scheduler kube-controller-manager glusterd; do
               systemctl enable $service
               systemctl start $service
+            done
+
+            echo "adding gluster peers"
+            minion_addresses="$MINION_ADDRESSES"
+            for minion in ${minion_addresses//,/ }; do
+              gluster peer probe $minion
             done
 
             cfn-signal -e0 --data 'OK' -r 'Setup complete' '$WAIT_HANDLE'
@@ -190,6 +227,7 @@ resources:
       security_groups:
         - get_resource: secgroup_base
         - get_resource: secgroup_kubernetes
+        - get_resource: secgroup_gluster
       fixed_ips:
         - subnet_id:
             get_resource: fixed_subnet
@@ -221,6 +259,8 @@ resources:
           kube_master_ip: {get_attr: [kube_master_eth0, fixed_ips, 0, ip_address]}
           external_network_id: {get_param: external_network_id}
           linkmanager_key: {get_attr: [linkmanager_key, value]}
+          docker_volume_size: {get_param: docker_volume_size}
+          gluster_volume_size: {get_param: gluster_volume_size}
 
 outputs:
 

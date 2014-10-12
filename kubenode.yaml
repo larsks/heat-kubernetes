@@ -39,6 +39,16 @@ parameters:
       used to sign etcd keys that control vxlan
       overlay network.
 
+  docker_volume_size:
+    type: number
+    description: size of docker volume
+    default: 20
+
+  gluster_volume_size:
+    type: number
+    description: size of volume allocated for gluster storage
+    default: 40
+
   # The following are all generated in the parent template.
   kube_master_ip:
     type: string
@@ -110,6 +120,7 @@ resources:
               git python-netifaces python-requests \
               tcpdump python-netifaces python-setuptools \
               golang-github-docker-libcontainer kubernetes \
+              glusterfs-server autofs
 
             # this is required to implement "exec" type livenessProbes in
             # kubernetes.
@@ -191,8 +202,49 @@ resources:
             ifup kbr0
             ifup obr0
 
+            # sometimes symlinks in /dev/disk/by-id are missing.  see if this helps.
+            udevadm trigger
+
+            # we need to truncate the volume id, because apparently the system
+            # truncates device serial numbers to 20 characters.
+            docker_volume="$DOCKER_VOLUME"
+            docker_volume=${docker_volume::20}
+            mke2fs -m0 -L docker /dev/disk/by-id/virtio-$docker_volume
+
+            gluster_volume="$GLUSTER_VOLUME"
+            gluster_volume=${gluster_volume::20}
+            mke2fs -m0 -L gluster /dev/disk/by-id/virtio-$gluster_volume
+
+            echo "$DOCKER_VOLUME -> $docker_volume"
+            echo "$GLUSTER_VOLUME -> $gluster_volume"
+            ls -l /dev/disk/by-id/
+
+            mkdir -p /var/lib/docker /bricks
+            cat >> /etc/fstab <<EOF
+            /dev/disk/by-id/virtio-$docker_volume /var/lib/docker ext4 defaults 1 2
+            /dev/disk/by-id/virtio-$gluster_volume /bricks ext4 defaults 1 2
+            EOF
+
+            mount /var/lib/docker
+            mount /bricks
+
+            mkdir /gluster
+            cat > /etc/auto.gluster <<'EOF'
+            #!/bin/sh
+            opts="-fstype=glusterfs,nodev,nosuid"
+            echo "$opts 127.0.0.1:/$1"
+            EOF
+            chmod 755 /etc/auto.gluster
+
+            cat > /etc/auto.master.d/gluster.autofs <<EOF
+            /gluster /etc/auto.gluster
+            EOF
+
+            setenforce 0
+            sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
+
             # then other services
-            for service in docker.socket kubelet kube-proxy linkmanager; do
+            for service in docker.socket kubelet kube-proxy linkmanager glusterd autofs; do
               systemctl enable $service
               systemctl start $service
             done
@@ -211,6 +263,10 @@ resources:
               get_param: linkmanager_key
             "$WAIT_HANDLE":
               get_resource: node_wait_handle
+            "$DOCKER_VOLUME":
+              get_resource: docker_volume
+            "$GLUSTER_VOLUME":
+              get_resource: gluster_volume
       networks:
         - port:
             get_resource: kube_node_eth0
@@ -233,6 +289,28 @@ resources:
         get_param: external_network_id
       port_id:
         get_resource: kube_node_eth0
+
+  docker_volume:
+    type: "OS::Cinder::Volume"
+    properties:
+      size: {get_param: docker_volume_size}
+
+  docker_volume_attach:
+    type: "OS::Cinder::VolumeAttachment"
+    properties:
+      instance_uuid: {get_resource: kube_node}
+      volume_id: {get_resource: docker_volume}
+
+  gluster_volume:
+    type: "OS::Cinder::Volume"
+    properties:
+      size: {get_param: gluster_volume_size}
+
+  gluster_volume_attach:
+    type: "OS::Cinder::VolumeAttachment"
+    properties:
+      instance_uuid: {get_resource: kube_node}
+      volume_id: {get_resource: gluster_volume}
 
 outputs:
 
