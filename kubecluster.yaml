@@ -157,6 +157,76 @@ resources:
 
   ######################################################################
   #
+  # software config
+
+  make_selinux_permissive:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/make-selinux-permissive.sh}
+
+  setup_repositories:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/setup-repositories.sh}
+
+  yum_common:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/yum-common.sh}
+
+  install_gluster:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/install-gluster.sh}
+
+  configure_master_kubernetes:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config:
+        str_replace:
+          template: {get_file: fragments/configure-master-kubernetes.sh}
+          params:
+            "$MINION_ADDRESSES": {"Fn::Join": [",", {get_attr: [kube_minions, kube_node_ip]}]}
+
+  configure_gluster_cluster:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config:
+        str_replace:
+          template: {get_file: fragments/configure-gluster-cluster.sh}
+          params:
+            "$MINION_ADDRESSES": {"Fn::Join": [",", {get_attr: [kube_minions, kube_node_ip]}]}
+
+  cfn_signal:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config:
+        str_replace:
+          template: {get_file: fragments/cfn-signal.sh}
+          params:
+            "$WAIT_HANDLE": {get_resource: master_wait_handle}
+
+  kube_master_init:
+    type: "OS::Heat::MultipartMime"
+    properties:
+      parts:
+        - config: {get_resource: make_selinux_permissive}
+        - config: {get_resource: setup_repositories}
+        - config: {get_resource: yum_common}
+        - config: {get_resource: configure_master_kubernetes}
+        - config: {get_resource: install_gluster}
+        - config: {get_resource: configure_gluster_cluster}
+        - config: {get_resource: cfn_signal}
+
+  ######################################################################
+  #
   # databases server.  this sets up a MySQL server
   #
   kube_master:
@@ -171,50 +241,7 @@ resources:
       key_name:
         get_param: ssh_key_name
       user_data_format: RAW
-      user_data:
-        str_replace:
-          template: |
-            #!/bin/sh
-
-            echo "setting up repositories"
-            yum -y install dnf-plugins-core
-            dnf -y copr enable walters/atomic-next
-            dnf -y copr enable larsks/fakedocker
-
-            sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
-
-            echo "installing packages"
-            yum -y upgrade
-            yum -y install kubernetes jq glusterfs-server
-
-            sed -i '
-              /^KUBE_API_ADDRESS=/ s/=.*/="0.0.0.0"/
-              /^MINION_ADDRESSES=/ s/=.*/="$MINION_ADDRESSES"/
-            ' /etc/kubernetes/apiserver
-
-            echo "putting selinux in permissive mode"
-            setenforce 0
-            sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
-
-            echo "enabling and starting services"
-            for service in etcd kube-apiserver kube-scheduler kube-controller-manager glusterd; do
-              systemctl enable $service
-              systemctl start $service
-            done
-
-            echo "adding gluster peers"
-            minion_addresses="$MINION_ADDRESSES"
-            for minion in ${minion_addresses//,/ }; do
-              gluster peer probe $minion
-            done
-
-            cfn-signal -e0 --data 'OK' -r 'Setup complete' '$WAIT_HANDLE'
-          params:
-            # NB: For this to work you need a version of Heat that
-            # includes https://review.openstack.org/#/c/121139/
-            "$MINION_ADDRESSES": {"Fn::Join": [",", {get_attr: [kube_minions, kube_node_ip]}]}
-            "$WAIT_HANDLE":
-              get_resource: master_wait_handle
+      user_data: {get_resource: kube_master_init}
       networks:
         - port:
             get_resource: kube_master_eth0
