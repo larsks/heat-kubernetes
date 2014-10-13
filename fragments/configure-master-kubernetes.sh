@@ -1,4 +1,6 @@
 #!/bin/sh
+#
+# install and enable kubernetes
 
 yum -y install kubernetes
 sed -i '

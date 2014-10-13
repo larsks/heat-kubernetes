@@ -1,4 +1,6 @@
 #!/bin/sh
+#
+# install and enable docker
 
 yum -y install \
 	docker-io

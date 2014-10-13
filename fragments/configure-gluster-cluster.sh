@@ -1,4 +1,6 @@
 #!/bin/sh
+#
+# create gluster cluster by probing all minions
 
 echo "adding gluster peers"
 minion_addresses="$MINION_ADDRESSES"

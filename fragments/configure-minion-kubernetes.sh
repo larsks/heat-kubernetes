@@ -1,4 +1,6 @@
 #!/bin/sh
+#
+# configure kubernetes on the minions
 
 yum -y install \
     kubernetes

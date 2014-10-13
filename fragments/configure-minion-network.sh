@@ -1,4 +1,6 @@
 #!/bin/sh
+#
+# set up networking on the minions
 
 yum -y install openvswitch bridge-utils
 

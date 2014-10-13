@@ -84,3 +84,23 @@ And once logged in you can run `kubecfg`, etc:
     10.0.0.4
     10.0.0.5
 
+Gluster support
+===============
+
+These templates create a [Gluster][] cluster from the master and
+minions, and set up autofs on the minions for convenient access to
+gluster volumes.  If you create a new volume named `data`:
+
+    # gluster volume create data replica 2 \
+      192.168.113.4:/bricks/data \
+      192.168.113.5:/bricks/data
+    # gluster volume start data
+
+Then you can immediately access that volume on the minions as
+`/gluster/data`.
+
+This can be used to provision persistent storage to pods using the
+"volume" support in Kubernetes.
+
+[gluster]: http://gluster.org/
+

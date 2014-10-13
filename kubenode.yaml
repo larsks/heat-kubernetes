@@ -117,11 +117,11 @@ resources:
       group: ungrouped
       config: {get_file: fragments/install-nsinit.sh}
 
-  configure_docker:
+  install_docker:
     type: "OS::Heat::SoftwareConfig"
     properties:
       group: ungrouped
-      config: {get_file: fragments/configure-docker.sh}
+      config: {get_file: fragments/install-docker.sh}
 
   configure_minion_kubernetes:
     type: "OS::Heat::SoftwareConfig"
@@ -201,7 +201,7 @@ resources:
         - config: {get_resource: configure_gluster_volume}
         - config: {get_resource: install_gluster}
         - config: {get_resource: configure_minion_network}
-        - config: {get_resource: configure_docker}
+        - config: {get_resource: install_docker}
         - config: {get_resource: configure_minion_kubernetes}
         - config: {get_resource: configure_linkmanager}
         - config: {get_resource: install_nsinit}
@@ -267,7 +267,7 @@ outputs:
 
   kube_node_ip:
     value: {get_attr: [kube_node_eth0, fixed_ips, 0, ip_address]}
-  
+
   kube_node_external_ip:
     value: {get_attr: [kube_node_floating, floating_ip_address]}
 
