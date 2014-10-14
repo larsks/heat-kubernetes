@@ -1,24 +1,32 @@
-A Kubernetes cluster with Heat
-==============================
+# A Kubernetes cluster with Heat
 
 These [Heat][] templates will deploy an *N*-node [Kubernetes][] cluster,
 where *N* is the value of the `number_of_minions` parameter you
 specify when creating the stack.
+
+[heat]: https://wiki.openstack.org/wiki/Heat
+[kubernetes]: https://github.com/GoogleCloudPlatform/kubernetes
 
 The resulting cluster has a network configuration similar to that
 produced by the Vagrant configuration distributed with Kubernetes: an
 overlay network between the minions provides a unified address space
 across the minions, such that any Docker container can contact any
 other Docker container directly, regardless of the host on which they
-are running.
+are running.  The overlay network is created using [linkmanager][], a
+quick hack that uses Open vSwitch and VXLAN tunnels to create the
+overlay network.
 
-The Kubernetes cluster created by these templates is able to
-successfully run the [guestbook example][guestbook].
+[linkmanager]: https://github.com/larsks/linkmanager
 
-[guestbook]: https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples/guestbook
+The template deploy a Gluster cluster across the nodes, so you can
+create cluster-wide shared filesystems.  Any Gluster volume you
+create will be available automatically at `/gluster/<volume_name>`.
 
 The cluster is based on Fedora 20, and makes use of the
 [walters/atomic-next][] [COPR][] repository.
+
+[walters/atomic-next]: https://copr.fedoraproject.org/coprs/walters/atomic-next/
+[copr]: https://copr.fedoraproject.org/
 
 **NB**: Fedora 20 initially shipped with a kernel that does not have
 the necessary support for vxlan to work correctly.  If you are using
@@ -31,15 +39,25 @@ Heat, with https://review.openstack.org/#/c/121139/ applied (this
 corrects a bug with template validation when using the "Fn::Join"
 function).
 
-[heat]: https://wiki.openstack.org/wiki/Heat
-[kubernetes]: https://github.com/GoogleCloudPlatform/kubernetes
-[walters/atomic-next]: https://copr.fedoraproject.org/coprs/walters/atomic-next/
-[copr]: https://copr.fedoraproject.org/
+## Requirements
 
-Creating the stack
-==================
+This Gluster-enabled version requires a functioning Cinder service. By
+default the templates will allocate, *on each minion*, a 20GB volume
+for docker images and a 40GB image for Gluster.  Make sure you have
+the necessary space available, or adjust the values of
+`docker_volume_size` and `gluster_volume_size` appropriately.
 
-Creating an environment file `local.yaml` with parameters specific to
+## Validation
+
+The Kubernetes cluster created by these templates is able to
+successfully run the [guestbook example][guestbook] from the
+Kubernetes repository.
+
+[guestbook]: https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples/guestbook
+
+## Creating the stack
+
+Create an environment file `local.yaml` with parameters specific to
 your environment:
 
     parameters:
