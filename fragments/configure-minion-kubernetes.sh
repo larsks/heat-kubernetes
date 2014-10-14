@@ -5,6 +5,8 @@
 yum -y install \
     kubernetes
 
+myip=$(ip addr show eth0 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
+
 sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' \
 	/etc/kubernetes/config
 
