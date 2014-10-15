@@ -227,7 +227,7 @@ resources:
 
   ######################################################################
   #
-  # databases server.  this sets up a MySQL server
+  # databases server.  this sets up a Kubernetes server
   #
   kube_master:
     type: "OS::Nova::Server"
