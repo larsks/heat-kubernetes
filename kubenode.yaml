@@ -88,6 +88,9 @@ resources:
           template: |
             #!/bin/sh
 
+            setenforce 0
+            sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
+
             bridge_address_base="$BRIDGE_ADDRESS_BASE"
 
             yum -y remove NetworkManager
