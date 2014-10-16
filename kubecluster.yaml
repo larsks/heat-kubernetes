@@ -39,7 +39,7 @@ parameters:
   number_of_minions:
     type: string
     description: how many kubernetes minions to spawn
-    default: 2
+    default: 1
   
   fixed_network_cidr:
     type: string
