@@ -5,7 +5,7 @@
 
 IMAGE=Fedora-x86_64-20-20140618-sda.qcow2
 
-if [ -n $IMAGE ]; then
+if ! [ -f "$IMAGE" ]; then
     curl -O http://archive.fedoraproject.org/pub/alt/openstack/20/x86_64/$IMAGE
 fi
 
