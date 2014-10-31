@@ -31,3 +31,6 @@ virt-customize \
 # SELinux relabeling requires virt-customize to have networking disabled
 # https://bugzilla.redhat.com/show_bug.cgi?id=1122907
 virt-customize --add $IMAGE --selinux-relabel --no-network
+
+echo "Finished building image:"
+ls -l $TARGET
