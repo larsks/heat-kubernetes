@@ -1,0 +1,330 @@
+heat_template_version: 2013-05-23
+
+description: >
+  This is a nested stack that defines a single Kubernetes minion,
+  based on a vanilla Fedora 20 cloud image.  This stack is included by
+  a ResourceGroup resource in the parent template (kubecluster.yaml).
+
+parameters:
+
+  server_image:
+    type: string
+    default: fedora-20-x86_64-updated
+    description: glance image used to boot the server
+
+  server_flavor:
+    type: string
+    default: m1.small
+    description: flavor to use when booting the server
+
+  ssh_key_name:
+    type: string
+    description: name of ssh key to be provisioned on our server
+    default: lars
+
+  external_network_id:
+    type: string
+    description: uuid of a network to use for kube host floating ip addresses
+
+  container_external_network_id:
+    type: string
+    description: uuid of a network to use for container floating ip addresses
+
+  container_external_subnet_id:
+    type: string
+    description: uuid of a subnet to use for container floating ip addresses
+
+  bridge_address_base:
+    type: string
+    description: >
+      first two octets of a /16 network to use for minion
+      addresses.
+    default: 10.251
+
+  external_bridge_address_base:
+    type: string
+    description: >
+      first three octets of the container external subnet Neutron network used for
+      container floating-ip addresses. Note: Should be a /24 network.
+
+  linkmanager_key:
+    type: string
+    description: >
+      used to sign etcd keys that control vxlan
+      overlay network.
+
+  # The following are all generated in the parent template.
+  kube_master_ip:
+    type: string
+    description: IP address of the Kubernetes master server.
+  fixed_network_id:
+    type: string
+    description: Network from which to allocate fixed addresses.
+  fixed_subnet_id:
+    type: string
+    description: Subnet from which to allocate fixed addresses.
+
+resources:
+
+  node_wait_handle:
+    type: "AWS::CloudFormation::WaitConditionHandle"
+
+  node_wait_condition:
+    type: "AWS::CloudFormation::WaitCondition"
+    depends_on:
+      - kube_node
+    properties:
+      Handle:
+        get_resource: node_wait_handle
+      Timeout: "6000"
+
+  # I am lazy, so this opens up all ports.
+  secgroup_all_open:
+    type: "OS::Neutron::SecurityGroup"
+    properties:
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+        - protocol: udp
+
+  kube_node:
+    type: "OS::Nova::Server"
+    properties:
+      image:
+        get_param: server_image
+      flavor:
+        get_param: server_flavor
+      key_name:
+        get_param: ssh_key_name
+      user_data_format: RAW
+      user_data:
+        str_replace:
+          template: |
+            #!/bin/sh
+
+            setenforce 0
+            sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
+
+            bridge_address_base="$BRIDGE_ADDRESS_BASE"
+            external_bridge_address_base="$EXTERNAL_BRIDGE_ADDRESS_BASE"
+
+            yum -y remove NetworkManager
+            chkconfig network on
+
+            # enable dnf command
+            yum -y install dnf-plugins-core
+
+            # enable kubernetes repository
+            dnf -y copr enable walters/atomic-next
+            sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
+
+            # avoid conflicts with "docker" package in fedora 20 that is not
+            # the docker you are looking for.
+            dnf -y copr enable larsks/fakedocker
+
+            yum -y upgrade
+            yum -y install \
+              jq openvswitch bridge-utils docker-io ebtables \
+              git python-netifaces python-requests which \
+              tcpdump python-netifaces python-setuptools \
+              golang-github-docker-libcontainer kubernetes \
+
+            # this is required to implement "exec" type livenessProbes in
+            # kubernetes.
+            ln -s /usr/bin/nsinit /usr/sbin/nsinit
+
+            my_eth0_ip=$(ip addr show eth0 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
+            my_eth1_ip=$(ip addr show eth1 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
+            my_eth0_ip_last_octet=${my_eth0_ip##*.}
+            bridge_address="${bridge_address_base}.${my_eth0_ip_last_octet}.1"
+            external_bridge_address="${my_eth1_ip}"
+            netconf=/etc/sysconfig/network-scripts
+
+            # Docker contains are attached to this bridge
+            cat > $netconf/ifcfg-kbr0 <<EOF
+            DEVICE=kbr0
+            TYPE=Bridge
+            IPADDR=${bridge_address}
+            NETMASK=255.255.255.0
+            ONBOOT=yes
+            STP=yes
+
+            # With the default forwarding delay of 15 seconds,
+            # many operations in a 'docker build' will simply timeout
+            # before the bridge starts forwarding.
+            DELAY=2
+            EOF
+
+            # This bridge will handle VXLAN tunnels
+            cat > $netconf/ifcfg-obr0 <<EOF
+            DEVICE=obr0
+            DEVICETYPE=ovs
+            TYPE=OVSBridge
+            ONBOOT=yes
+            BRIDGE=kbr0
+            STP=true
+            EOF
+
+            # External container network bridge
+            cat > $netconf/ifcfg-kbr1 <<EOF
+            DEVICE=kbr1
+            TYPE=Bridge
+            IPADDR=${external_bridge_address}
+            NETMASK=255.255.255.0
+            ONBOOT=yes
+            STP=yes
+            BOOTPROTO=none
+            EOF
+
+            # Physcial interface used to bridge container floating-ips
+            cat > $netconf/ifcfg-eth1 <<EOF
+            DEVICE=eth1
+            BOOTPROTO=none
+            ONBOOT=yes
+            DEFROUTE=no
+            TYPE=Ethernet
+            EOF
+
+            cat > $netconf/route-kbr0 <<EOF
+            ${bridge_address_base}.0.0/16 dev kbr0 scope link src ${bridge_address}
+            EOF
+
+            # Container interface MTU must be reduced in order to
+            # prevent fragmentation problems when vxlan header is
+            # added to a host-MTU sized packet.
+            cat > /etc/sysconfig/docker <<EOF
+            OPTIONS="--selinux-enabled -b kbr0 --mtu 1450"
+            EOF
+
+            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' \
+              /etc/kubernetes/config
+            sed -i '
+              /^MINION_ADDRESS=/ s/=.*/="0.0.0.0"/
+              /^MINION_HOSTNAME=/ s/=.*/="'"$my_eth0_ip"'"/
+            ' /etc/kubernetes/kubelet
+
+            sed -i '
+              /^KUBE_API_ADDRESS=/ s/=.*/="$KUBE_MASTER_IP"/
+              /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
+            ' /etc/kubernetes/apiserver
+
+            # install linkmanager for managing OVS links
+            # for minion overlay network.
+            git clone http://github.com/larsks/linkmanager.git \
+              /opt/linkmanager
+            (
+              cd /opt/linkmanager
+              python setup.py install
+              cp linkmanager.service /etc/systemd/system/linkmanager.service
+            )
+            cat > /etc/sysconfig/linkmanager <<EOF
+            OPTIONS="-s http://$KUBE_MASTER_IP:4001 -v -b obr0 --secret $LINKMANAGER_KEY"
+            EOF
+
+            cat >> /etc/environment <<EOF
+            KUBERNETES_MASTER=http://$KUBE_MASTER_IP:8080
+            EOF
+
+            # Install pipework and docker-spotter for managing eth1 of containers
+            git clone http://github.com/danehans/docker-spotter.git \
+              /opt/docker-spotter
+            (
+              cd /opt/docker-spotter
+              curl -s https://go.googlecode.com/files/go1.2.linux-amd64.tar.gz \
+              | tar -C /usr/local -xzf -
+              export PATH=/usr/local/go/bin:$PATH
+              export GOPATH=/go
+              go get -d && go build
+              cp docker-spotter /usr/bin/docker-spotter
+              cp docker-spotter.service /etc/systemd/system/docker-spotter.service
+            )
+
+            cat > /etc/sysconfig/docker-spotter <<EOF
+            OPTIONS=-e CONFIG_NETWORK=true:start,restart:pipework:kbr1:{{.ID}}:0/0 \
+            -e CONFIG_NETWORK=true:stop:echo:gone
+            EOF
+
+            git clone http://github.com/danehans/pipework /opt/pipework
+            cp /opt/pipework/pipework /usr/bin/pipework
+
+            # start bridges first
+            systemctl enable openvswitch
+            systemctl start openvswitch
+            ifup kbr0
+            ifup obr0
+            ifdown eth1
+            ifup eth1
+            ifup kbr1
+
+            # add eth1 to kube external bridge
+            brctl addif kbr1 eth1
+
+            # then other services
+            for service in docker.socket kubelet kube-proxy linkmanager docker-spotter; do
+              systemctl enable $service
+              systemctl start $service
+            done
+
+            # make fedora user a member of the docker group
+            # (so you can run docker commands as the fedora user)
+            usermod -G docker fedora
+
+            cfn-signal -e0 --data 'OK' -r 'Setup complete' '$WAIT_HANDLE'
+          params:
+            "$KUBE_MASTER_IP":
+              get_param: kube_master_ip
+            "$BRIDGE_ADDRESS_BASE":
+              get_param: bridge_address_base
+            "$EXTERNAL_BRIDGE_ADDRESS_BASE":
+              get_param: external_bridge_address_base
+            "$LINKMANAGER_KEY":
+              get_param: linkmanager_key
+            "$WAIT_HANDLE":
+              get_resource: node_wait_handle
+      networks:
+        - port:
+            get_resource: kube_node_eth0
+        - port:
+            get_resource: kube_node_eth1
+
+  kube_node_eth1:
+    type: "OS::Neutron::Port"
+    properties:
+      network_id:
+        get_param: container_external_network_id
+      security_groups:
+        - get_resource: secgroup_all_open
+      fixed_ips:
+        - subnet_id:
+            get_param: container_external_subnet_id
+
+  kube_node_eth0:
+    type: "OS::Neutron::Port"
+    properties:
+      network_id:
+        get_param: fixed_network_id
+      security_groups:
+        - get_resource: secgroup_all_open
+      fixed_ips:
+        - subnet_id:
+            get_param: fixed_subnet_id
+
+  kube_node_floating:
+    type: "OS::Neutron::FloatingIP"
+    properties:
+      floating_network_id:
+        get_param: external_network_id
+      port_id:
+        get_resource: kube_node_eth0
+
+outputs:
+
+  kube_node_ip_eth0:
+    value: {get_attr: [kube_node_eth0, fixed_ips, 0, ip_address]}
+
+  kube_node_ip_eth1:
+    value: {get_attr: [kube_node_eth1, fixed_ips, 0, ip_address]}
+
+  kube_node_external_ip:
+    value: {get_attr: [kube_node_floating, floating_ip_address]}
+
