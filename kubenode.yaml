@@ -26,18 +26,13 @@ parameters:
     type: string
     description: uuid of a network to use for floating ip addresses
 
-  bridge_address_base:
+  allow_priv:
     type: string
     description: >
-      first two octets of a /16 network to use for minion
-      addresses.
-    default: 10.251
-
-  linkmanager_key:
-    type: string
-    description: >
-      used to sign etcd keys that control vxlan
-      overlay network.
+      whether or not kubernetes should permit privileged containers.
+    default: "false"
+    constraints:
+      - allowed_values: ["true", "false"]
 
   # The following are all generated in the parent template.
   kube_master_ip:
@@ -88,132 +83,117 @@ resources:
           template: |
             #!/bin/sh
 
-            setenforce 0
-            sed -i '/^SELINUX=/ s/=.*/=permissive/' /etc/selinux/config
-
-            bridge_address_base="$BRIDGE_ADDRESS_BASE"
-
-            yum -y remove NetworkManager
-            chkconfig network on
-
-            # enable dnf command
-            yum -y install dnf-plugins-core
-
-            # enable kubernetes repository
-            dnf -y copr enable walters/atomic-next
-            sed -i 's/$releasever/21/g' /etc/yum.repos.d/_copr_walters-atomic-next.repo
-
-            # avoid conflicts with "docker" package in fedora 20 that is not
-            # the docker you are looking for.
-            dnf -y copr enable larsks/fakedocker
-
-            yum -y upgrade
-            yum -y install \
-              jq openvswitch bridge-utils docker-io \
-              git python-netifaces python-requests \
-              tcpdump python-netifaces python-setuptools \
-              golang-github-docker-libcontainer kubernetes \
-
-            # this is required to implement "exec" type livenessProbes in
-            # kubernetes.
-            ln -s /usr/bin/nsinit /usr/sbin/nsinit
-
-            myip=$(ip addr show eth0 | awk '$1 == "inet" {print $2}' | cut -f1 -d/)
+            myip=$(ip addr show eth0 |
+              awk '$1 == "inet" {print $2}' | cut -f1 -d/)
             myip_last_octet=${myip##*.}
-            bridge_address="${bridge_address_base}.${myip_last_octet}.1"
-            netconf=/etc/sysconfig/network-scripts
 
-            # Docker contains are attached to this bridge
-            cat > $netconf/ifcfg-kbr0 <<EOF
-            DEVICE=kbr0
-            TYPE=Bridge
-            IPADDR=${bridge_address}
-            NETMASK=255.255.255.0
-            ONBOOT=yes
-            STP=yes
-
-            # With the default forwarding delay of 15 seconds,
-            # many operations in a 'docker build' will simply timeout
-            # before the bridge starts forwarding.
-            DELAY=2
-            EOF
-
-            # This bridge will handle VXLAN tunnels
-            cat > $netconf/ifcfg-obr0 <<EOF
-            DEVICE=obr0
-            DEVICETYPE=ovs
-            TYPE=OVSBridge
-            ONBOOT=yes
-            BRIDGE=kbr0
-            STP=true
-            EOF
-
-            cat > $netconf/route-kbr0 <<EOF
-            ${bridge_address_base}.0.0/16 dev kbr0 scope link src ${bridge_address}
-            EOF
-
-            # Container interface MTU must be reduced in order to
-            # prevent fragmentation problems when vxlan header is
-            # added to a host-MTU sized packet.
-            cat > /etc/sysconfig/docker <<EOF
-            OPTIONS="--selinux-enabled -b kbr0 --mtu 1450"
-            EOF
-
-            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=http://$KUBE_MASTER_IP:4001|' \
-              /etc/kubernetes/config
             sed -i '
-              /^MINION_ADDRESS=/ s/=.*/="0.0.0.0"/
-              /^MINION_HOSTNAME=/ s/=.*/="'"$myip"'"/
+              /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow_privileged=$ALLOW_PRIV"/
+            ' /etc/kubernetes/config
+
+            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|="--etcd_servers=http://$KUBE_MASTER_IP:4001"|' \
+              /etc/kubernetes/config
+
+            sed -i '
+              /^KUBELET_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
+              /^KUBELET_HOSTNAME=/ s/=.*/="--hostname_override='"$myip"'"/
             ' /etc/kubernetes/kubelet
 
             sed -i '
-              /^KUBE_API_ADDRESS=/ s/=.*/="$KUBE_MASTER_IP"/
-              /^KUBE_MASTER=/ s/=.*/="$KUBE_MASTER_IP"/
+              /^KUBE_MASTER=/ s/=.*/="--master=$KUBE_MASTER_IP:8080"/
             ' /etc/kubernetes/apiserver
 
-            # install linkmanager for managing OVS links
-            # for minion overlay network.
-            git clone http://github.com/larsks/linkmanager.git \
-              /opt/linkmanager
-            (
-              cd /opt/linkmanager
-              python setup.py install
-              cp linkmanager.service /etc/systemd/system/linkmanager.service
-            )
-            cat > /etc/sysconfig/linkmanager <<EOF
-            OPTIONS="-s http://$KUBE_MASTER_IP:4001 -v -b obr0 --secret $LINKMANAGER_KEY"
-            EOF
+            sed -i '
+              /^FLANNEL_ETCD=/ s|=.*|="http://$KUBE_MASTER_IP:4001"|
+            ' /etc/sysconfig/flanneld
 
             cat >> /etc/environment <<EOF
             KUBERNETES_MASTER=http://$KUBE_MASTER_IP:8080
             EOF
 
-            # start bridges first
-            systemctl enable openvswitch
-            systemctl start openvswitch
-            ifup kbr0
-            ifup obr0
+            # make centos user a member of the docker group
+            # (so you can run docker commands as the centos user)
+            if ! grep -q docker /etc/group; then
+              grep docker /lib/group >> /etc/group
+            fi
+            usermod -G docker centos
 
-            # then other services
-            for service in docker.socket kubelet kube-proxy linkmanager; do
-              systemctl enable $service
-              systemctl start $service
+            cat > /usr/local/bin/flanneld-waiter <<'EOF'
+            #!/bin/sh
+            
+            while ! [ -f /run/flannel/subnet.env ]; do
+              echo "waiting for flanneld"
+              sleep 1
             done
 
-            # make fedora user a member of the docker group
-            # (so you can run docker commands as the fedora user)
-            usermod -G docker fedora
+            echo flanneld is active
 
-            cfn-signal -e0 --data 'OK' -r 'Setup complete' '$WAIT_HANDLE'
+            exit 0
+            EOF
+
+            chmod 755 /usr/local/bin/flanneld-waiter
+
+            cat > /etc/systemd/system/flanneld-waiter.service <<'EOF'
+            [Unit]
+            Description=Wait for flanneld to provide subnet/mtu information
+            After=network.target flanneld.service
+            Requires=flanneld.service
+
+            [Service]
+            Type=oneshot
+            ExecStart=/usr/local/bin/flanneld-waiter
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            cat > /etc/systemd/system/docker.service <<'EOF'
+            [Unit]
+            Description=Docker Application Container Engine
+            Documentation=http://docs.docker.com
+            After=network.target docker.socket flanneld-waiter.service
+            Requires=docker.socket flanneld-waiter.service
+
+            [Service]
+            Type=notify
+            EnvironmentFile=-/etc/sysconfig/docker
+            EnvironmentFile=-/etc/sysconfig/docker-storage
+            EnvironmentFile=-/run/flannel/subnet.env
+            ExecStart=/usr/bin/docker -d -H fd:// --bip $FLANNEL_SUBNET --mtu $FLANNEL_MTU $OPTIONS $DOCKER_STORAGE_OPTIONS
+            Restart=on-failure
+            LimitNOFILE=1048576
+            LimitNPROC=1048576
+
+            [Install]
+            WantedBy=multi-user.target
+            EOF
+
+            echo reloading systemd
+            systemctl daemon-reload
+
+            # docker is already enabled and possibly running on centos atomic host
+            # so we need to stop it first and delete the docker0 bridge (which will
+            # be re-created using the flannel-provided subnet).
+            echo stopping docker
+            systemctl stop docker
+            ip link del docker0
+
+            echo starting services
+            for service in flanneld-waiter flanneld docker.socket kubelet kube-proxy; do
+              systemctl enable $service
+              systemctl --no-block start $service
+            done
+
+            echo notifying heat
+            curl -sf -X PUT -H 'Content-Type: application/json' \
+              --data-binary '{"Status": "SUCCESS",
+                "Reason": "Setup complete",
+                "Data": "OK", "UniqueId": "00000"}' \
+              "$WAIT_HANDLE"
           params:
-            "$KUBE_MASTER_IP":
-              get_param: kube_master_ip
-            "$BRIDGE_ADDRESS_BASE":
-              get_param: bridge_address_base
-            "$LINKMANAGER_KEY":
-              get_param: linkmanager_key
-            "$WAIT_HANDLE":
-              get_resource: node_wait_handle
+            "$ALLOW_PRIV": {get_param: allow_priv}
+            "$KUBE_MASTER_IP": {get_param: kube_master_ip}
+            "$WAIT_HANDLE": {get_resource: node_wait_handle}
       networks:
         - port:
             get_resource: kube_node_eth0
