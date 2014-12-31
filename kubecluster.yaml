@@ -178,6 +178,12 @@ resources:
       group: ungrouped
       config: {get_file: fragments/enable-services-master.sh}
 
+  kube_user:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/kube-user.yaml}
+
   kube_examples:
     type: "OS::Heat::SoftwareConfig"
     properties:
@@ -195,6 +201,7 @@ resources:
     properties:
       parts:
         - config: {get_resource: write_heat_params}
+        - config: {get_resource: kube_user}
         - config: {get_resource: configure_kubernetes}
         - config: {get_resource: enable_services}
         - config: {get_resource: configure_flannel}

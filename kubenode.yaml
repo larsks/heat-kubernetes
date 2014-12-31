@@ -92,6 +92,12 @@ resources:
       group: ungrouped
       config: {get_file: fragments/configure-kubernetes-minion.sh}
 
+  kube_user:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/kube-user.yaml}
+
   docker_service:
     type: "OS::Heat::SoftwareConfig"
     properties:
@@ -121,6 +127,7 @@ resources:
     properties:
       parts:
         - config: {get_resource: write_heat_params}
+        - config: {get_resource: kube_user}
         - config: {get_resource: add_centos_to_docker}
         - config: {get_resource: configure_kubernetes_minion}
         - config: {get_resource: docker_service}
