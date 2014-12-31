@@ -56,7 +56,7 @@ parameters:
     description: size of subnet assigned to each minion
     default: 24
 
-  allow_priv:
+  kube_allow_priv:
     type: string
     description: >
       whether or not kubernetes should permit privileged containers.
@@ -146,6 +146,61 @@ resources:
           port_range_min: 7001
           port_range_max: 7001
 
+  write_heat_params:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config:
+        str_replace:
+          template: {get_file: fragments/write-heat-params-master.yaml}
+          params:
+            "$MINION_ADDRESSES": {"Fn::Join": [",", {get_attr: [kube_minions, kube_node_ip]}]}
+            "$KUBE_ALLOW_PRIV": {get_param: kube_allow_priv}
+            "$WAIT_HANDLE": {get_resource: master_wait_handle}
+            "$FLANNEL_NETWORK_CIDR": {get_param: flannel_network_cidr}
+            "$FLANNEL_NETWORK_SUBNETLEN": {get_param: flannel_network_subnetlen}
+
+  configure_kubernetes:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/configure-kubernetes-master.sh}
+
+  configure_flannel:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/configure-flannel.sh}
+
+  enable_services:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/enable-services-master.sh}
+
+  kube_examples:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/kube-examples.yaml}
+
+  cfn_signal:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/cfn-signal.sh}
+
+  kube_master_init:
+    type: "OS::Heat::MultipartMime"
+    properties:
+      parts:
+        - config: {get_resource: write_heat_params}
+        - config: {get_resource: configure_kubernetes}
+        - config: {get_resource: enable_services}
+        - config: {get_resource: configure_flannel}
+        - config: {get_resource: kube_examples}
+        - config: {get_resource: cfn_signal}
+
   ######################################################################
   #
   # databases server.  this sets up a Kubernetes server
@@ -162,56 +217,7 @@ resources:
       key_name:
         get_param: ssh_key_name
       user_data_format: RAW
-      user_data:
-        str_replace:
-          template: |
-            #!/bin/sh
-
-            sed -i '
-              /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow_privileged=$ALLOW_PRIV"/
-            ' /etc/kubernetes/config
-
-            sed -i '
-              /^KUBE_API_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
-            ' /etc/kubernetes/apiserver
-
-            sed -i '
-              /^KUBELET_ADDRESSES=/ s/=.*/="--machines=$MINION_ADDRESSES"/
-            ' /etc/kubernetes/controller-manager
-
-            echo starting services
-            for service in etcd kube-apiserver kube-scheduler kube-controller-manager; do
-              systemctl enable $service
-              systemctl start $service
-            done
-
-            # wait for etcd to become active (we will need it to push the flanneld config)
-            while ! curl -sf http://localhost:4001/v2/keys/; do
-              echo "waiting for etcd"
-              sleep 1
-            done
-
-            # put the flannel config in etcd
-            echo creating flanneld config in etcd
-            curl -sf -L http://localhost:4001/v2/keys/coreos.com/network/config \
-              -X PUT -d value='{
-                "Network": "$FLANNEL_NETWORK_CIDR",
-                "Subnetlen": $FLANNEL_NETWORK_SUBNETLEN}'
-
-            echo notifying heat
-            curl -sf -X PUT -H 'Content-Type: application/json' \
-              --data-binary '{"Status": "SUCCESS",
-                "Reason": "Setup complete",
-                "Data": "OK", "UniqueId": "00000"}' \
-              "$WAIT_HANDLE"
-          params:
-            # NB: For this to work you need a version of Heat that
-            # includes https://review.openstack.org/#/c/121139/
-            "$MINION_ADDRESSES": {"Fn::Join": [",", {get_attr: [kube_minions, kube_node_ip]}]}
-            "$ALLOW_PRIV": {get_param: allow_priv}
-            "$WAIT_HANDLE": {get_resource: master_wait_handle}
-            "$FLANNEL_NETWORK_CIDR": {get_param: flannel_network_cidr}
-            "$FLANNEL_NETWORK_SUBNETLEN": {get_param: flannel_network_subnetlen}
+      user_data: {get_resource: kube_master_init}
       networks:
         - port:
             get_resource: kube_master_eth0
@@ -254,7 +260,7 @@ resources:
           fixed_subnet_id: {get_resource: fixed_subnet}
           kube_master_ip: {get_attr: [kube_master_eth0, fixed_ips, 0, ip_address]}
           external_network_id: {get_param: external_network_id}
-          allow_priv: {get_param: allow_priv}
+          kube_allow_priv: {get_param: kube_allow_priv}
 
 outputs:
 

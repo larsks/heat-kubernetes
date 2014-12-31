@@ -26,7 +26,7 @@ parameters:
     type: string
     description: uuid of a network to use for floating ip addresses
 
-  allow_priv:
+  kube_allow_priv:
     type: string
     description: >
       whether or not kubernetes should permit privileged containers.
@@ -68,6 +68,66 @@ resources:
         - protocol: tcp
         - protocol: udp
 
+  write_heat_params:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config:
+        str_replace:
+          template: {get_file: fragments/write-heat-params.yaml}
+          params:
+            "$KUBE_ALLOW_PRIV": {get_param: kube_allow_priv}
+            "$KUBE_MASTER_IP": {get_param: kube_master_ip}
+            "$WAIT_HANDLE": {get_resource: node_wait_handle}
+
+  add_centos_to_docker:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/add-centos-to-docker.sh}
+
+  configure_kubernetes_minion:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/configure-kubernetes-minion.sh}
+
+  docker_service:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/docker.service.yaml}
+
+  wait_for_flanneld:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/wait-for-flanneld.yaml}
+
+  enable_services:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/enable-services-minion.sh}
+
+  cfn_signal:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/cfn-signal.sh}
+
+  kube_node_init:
+    type: "OS::Heat::MultipartMime"
+    properties:
+      parts:
+        - config: {get_resource: write_heat_params}
+        - config: {get_resource: add_centos_to_docker}
+        - config: {get_resource: configure_kubernetes_minion}
+        - config: {get_resource: docker_service}
+        - config: {get_resource: wait_for_flanneld}
+        - config: {get_resource: enable_services}
+        - config: {get_resource: cfn_signal}
+
   kube_node:
     type: "OS::Nova::Server"
     properties:
@@ -78,122 +138,7 @@ resources:
       key_name:
         get_param: ssh_key_name
       user_data_format: RAW
-      user_data:
-        str_replace:
-          template: |
-            #!/bin/sh
-
-            myip=$(ip addr show eth0 |
-              awk '$1 == "inet" {print $2}' | cut -f1 -d/)
-            myip_last_octet=${myip##*.}
-
-            sed -i '
-              /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow_privileged=$ALLOW_PRIV"/
-            ' /etc/kubernetes/config
-
-            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|="--etcd_servers=http://$KUBE_MASTER_IP:4001"|' \
-              /etc/kubernetes/config
-
-            sed -i '
-              /^KUBELET_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
-              /^KUBELET_HOSTNAME=/ s/=.*/="--hostname_override='"$myip"'"/
-            ' /etc/kubernetes/kubelet
-
-            sed -i '
-              /^KUBE_MASTER=/ s/=.*/="--master=$KUBE_MASTER_IP:8080"/
-            ' /etc/kubernetes/apiserver
-
-            sed -i '
-              /^FLANNEL_ETCD=/ s|=.*|="http://$KUBE_MASTER_IP:4001"|
-            ' /etc/sysconfig/flanneld
-
-            cat >> /etc/environment <<EOF
-            KUBERNETES_MASTER=http://$KUBE_MASTER_IP:8080
-            EOF
-
-            # make centos user a member of the docker group
-            # (so you can run docker commands as the centos user)
-            if ! grep -q docker /etc/group; then
-              grep docker /lib/group >> /etc/group
-            fi
-            usermod -G docker centos
-
-            cat > /usr/local/bin/flanneld-waiter <<'EOF'
-            #!/bin/sh
-            
-            while ! [ -f /run/flannel/subnet.env ]; do
-              echo "waiting for flanneld"
-              sleep 1
-            done
-
-            echo flanneld is active
-
-            exit 0
-            EOF
-
-            chmod 755 /usr/local/bin/flanneld-waiter
-
-            cat > /etc/systemd/system/flanneld-waiter.service <<'EOF'
-            [Unit]
-            Description=Wait for flanneld to provide subnet/mtu information
-            After=network.target flanneld.service
-            Requires=flanneld.service
-
-            [Service]
-            Type=oneshot
-            ExecStart=/usr/local/bin/flanneld-waiter
-
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            cat > /etc/systemd/system/docker.service <<'EOF'
-            [Unit]
-            Description=Docker Application Container Engine
-            Documentation=http://docs.docker.com
-            After=network.target docker.socket flanneld-waiter.service
-            Requires=docker.socket flanneld-waiter.service
-
-            [Service]
-            Type=notify
-            EnvironmentFile=-/etc/sysconfig/docker
-            EnvironmentFile=-/etc/sysconfig/docker-storage
-            EnvironmentFile=-/run/flannel/subnet.env
-            ExecStart=/usr/bin/docker -d -H fd:// --bip $FLANNEL_SUBNET --mtu $FLANNEL_MTU $OPTIONS $DOCKER_STORAGE_OPTIONS
-            Restart=on-failure
-            LimitNOFILE=1048576
-            LimitNPROC=1048576
-
-            [Install]
-            WantedBy=multi-user.target
-            EOF
-
-            echo reloading systemd
-            systemctl daemon-reload
-
-            # docker is already enabled and possibly running on centos atomic host
-            # so we need to stop it first and delete the docker0 bridge (which will
-            # be re-created using the flannel-provided subnet).
-            echo stopping docker
-            systemctl stop docker
-            ip link del docker0
-
-            echo starting services
-            for service in flanneld-waiter flanneld docker.socket kubelet kube-proxy; do
-              systemctl enable $service
-              systemctl --no-block start $service
-            done
-
-            echo notifying heat
-            curl -sf -X PUT -H 'Content-Type: application/json' \
-              --data-binary '{"Status": "SUCCESS",
-                "Reason": "Setup complete",
-                "Data": "OK", "UniqueId": "00000"}' \
-              "$WAIT_HANDLE"
-          params:
-            "$ALLOW_PRIV": {get_param: allow_priv}
-            "$KUBE_MASTER_IP": {get_param: kube_master_ip}
-            "$WAIT_HANDLE": {get_resource: node_wait_handle}
+      user_data: {get_resource: kube_node_init}
       networks:
         - port:
             get_resource: kube_node_eth0
