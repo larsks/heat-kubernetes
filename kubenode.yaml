@@ -159,8 +159,10 @@ resources:
             OPTIONS="--selinux-enabled -b kbr0 --mtu 1450"
             EOF
 
-            sed -i '/^KUBE_ETCD_SERVERS=/ s|=.*|=--etcd_servers=http://$KUBE_MASTER_IP:4001|' \
-              /etc/kubernetes/config
+            sed -i '
+              /^KUBE_ETCD_SERVERS=/ s/=.*/=--etcd_servers="http:\/\/$KUBE_MASTER_IP:4001"/
+              /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow-privileged=true"/
+            ' /etc/kubernetes/config
             sed -i '
               /^KUBELET_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
               /^KUBELET_HOSTNAME=/ s/=.*/="--hostname_override='"$myip"'"/
