@@ -14,9 +14,6 @@ sed -i '
 ' /etc/kubernetes/config
 
 sed -i '
-' /etc/kubernetes/config
-
-sed -i '
 /^KUBELET_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
 /^KUBELET_HOSTNAME=/ s/=.*/="--hostname_override='"$myip"'"/
 ' /etc/kubernetes/kubelet
