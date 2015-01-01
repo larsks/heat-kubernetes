@@ -12,7 +12,7 @@ if [ "$FLANNEL_USE_VXLAN" == "true" ]; then
 	use_vxlan=1
 fi
 
-cat > /etc/sysconfig/flannel <<EOF
+cat > /etc/sysconfig/flannel-network <<EOF
 value={
   "Network": "$FLANNEL_NETWORK_CIDR",
   "Subnetlen": $FLANNEL_NETWORK_SUBNETLEN${use_vxlan:+",
@@ -26,6 +26,6 @@ EOF
 echo "creating flanneld config in etcd"
 curl -sf -L http://localhost:4001/v2/keys/coreos.com/network/config \
   -X PUT \
-  -d @/etc/sysconfig/flannel
+  -d @/etc/sysconfig/flannel-network
 
 
