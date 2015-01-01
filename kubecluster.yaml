@@ -166,6 +166,9 @@ resources:
               /^KUBE_API_ADDRESS=/ s/=.*/="-address=0.0.0.0"/
             ' /etc/kubernetes/apiserver
             sed -i '
+              /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow_privileged=true"/
+            ' /etc/kubernetes/config
+            sed -i '
               /^KUBELET_ADDRESSES=/ s/=.*/="--machines=$MINION_ADDRESSES"/
             ' /etc/kubernetes/controller-manager
 
