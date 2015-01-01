@@ -2,6 +2,8 @@
 
 . /etc/sysconfig/heat-params
 
+echo "configuring kubernetes (minion)"
+
 myip=$(ip addr show eth0 |
 awk '$1 == "inet" {print $2}' | cut -f1 -d/)
 myip_last_octet=${myip##*.}

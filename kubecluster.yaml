@@ -56,11 +56,20 @@ parameters:
     description: size of subnet assigned to each minion
     default: 24
 
+  flannel_use_vxlan:
+    type: string
+    description: >
+      if true use the vxlan backend, otherwise use the default
+      udp backend
+    default: "false"
+    constraints:
+      - allowed_values: ["true", "false"]
+
   kube_allow_priv:
     type: string
     description: >
       whether or not kubernetes should permit privileged containers.
-    default: "false"
+    default: "true"
     constraints:
       - allowed_values: ["true", "false"]
 
@@ -85,6 +94,7 @@ resources:
   # resources (and have the deployer provide network and subnet ids,
   # etc, as parameters), but I wanted to minmize the amount of
   # configuration necessary to make this go.
+
   fixed_network:
     type: "OS::Neutron::Net"
 
@@ -123,6 +133,7 @@ resources:
   # sorts.
   #
 
+  # permit ssh access
   secgroup_base:
     type: "OS::Neutron::SecurityGroup"
     properties:
@@ -132,6 +143,7 @@ resources:
           port_range_min: 22
           port_range_max: 22
 
+  # open ports for kubernetes and etcd
   secgroup_kubernetes:
     type: "OS::Neutron::SecurityGroup"
     properties:
@@ -149,6 +161,12 @@ resources:
           port_range_min: 7001
           port_range_max: 7001
 
+  ######################################################################
+  #
+  # software configs.  these are components that are combined into
+  # a multipart MIME user-data archive.
+  #
+
   write_heat_params:
     type: "OS::Heat::SoftwareConfig"
     properties:
@@ -162,6 +180,7 @@ resources:
             "$WAIT_HANDLE": {get_resource: master_wait_handle}
             "$FLANNEL_NETWORK_CIDR": {get_param: flannel_network_cidr}
             "$FLANNEL_NETWORK_SUBNETLEN": {get_param: flannel_network_subnetlen}
+            "$FLANNEL_USE_VXLAN": {get_param: flannel_use_vxlan}
 
   configure_kubernetes:
     type: "OS::Heat::SoftwareConfig"
@@ -199,10 +218,17 @@ resources:
       group: ungrouped
       config: {get_file: fragments/cfn-signal.sh}
 
+  disable_selinux:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/disable-selinux.sh}
+
   kube_master_init:
     type: "OS::Heat::MultipartMime"
     properties:
       parts:
+        - config: {get_resource: disable_selinux}
         - config: {get_resource: write_heat_params}
         - config: {get_resource: kube_user}
         - config: {get_resource: configure_kubernetes}

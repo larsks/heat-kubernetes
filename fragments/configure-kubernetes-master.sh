@@ -2,6 +2,8 @@
 
 . /etc/sysconfig/heat-params
 
+echo "configuring kubernetes (master)"
+
 sed -i '
   /^KUBE_ALLOW_PRIV=/ s/=.*/="--allow_privileged='"$KUBE_ALLOW_PRIV"'"/
 ' /etc/kubernetes/config

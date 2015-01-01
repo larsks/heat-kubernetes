@@ -2,7 +2,7 @@
 
 . /etc/sysconfig/heat-params
 
-echo notifying heat
+echo "notifying heat"
 curl -sf -X PUT -H 'Content-Type: application/json' \
 	--data-binary '{"Status": "SUCCESS",
 	"Reason": "Setup complete",
