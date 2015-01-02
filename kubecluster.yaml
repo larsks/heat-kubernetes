@@ -44,12 +44,18 @@ parameters:
   fixed_network_cidr:
     type: string
     description: network range for fixed ip network
-    default: 10.0.0.0/24
+    default: "10.0.0.0/24"
+
+  portal_network_cidr:
+    type: string
+    description: >
+      address range used by kubernetes for service portals
+    default: "10.254.0.0/16"
 
   flannel_network_cidr:
     type: string
     description: network range for flannel overlay network
-    default: 10.100.0.0/16
+    default: "10.100.0.0/16"
 
   flannel_network_subnetlen:
     type: string
@@ -181,6 +187,7 @@ resources:
             "$FLANNEL_NETWORK_CIDR": {get_param: flannel_network_cidr}
             "$FLANNEL_NETWORK_SUBNETLEN": {get_param: flannel_network_subnetlen}
             "$FLANNEL_USE_VXLAN": {get_param: flannel_use_vxlan}
+            "$PORTAL_NETWORK_CIDR": {get_param: portal_network_cidr}
 
   configure_kubernetes:
     type: "OS::Heat::SoftwareConfig"

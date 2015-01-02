@@ -10,6 +10,7 @@ sed -i '
 
 sed -i '
   /^KUBE_API_ADDRESS=/ s/=.*/="--address=0.0.0.0"/
+  /^KUBE_SERVICE_ADDRESSES=/ s/=.*/="--portal_net='"$PORTAL_NETWORK_CIDR"'"/
 ' /etc/kubernetes/apiserver
 
 sed -i '
