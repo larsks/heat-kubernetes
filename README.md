@@ -5,39 +5,28 @@ These [Heat][] templates will deploy an *N*-node [Kubernetes][] cluster,
 where *N* is the value of the `number_of_minions` parameter you
 specify when creating the stack.
 
-The resulting cluster has a network configuration similar to that
-produced by the Vagrant configuration distributed with Kubernetes: an
-overlay network between the minions provides a unified address space
-across the minions, such that any Docker container can contact any
-other Docker container directly, regardless of the host on which they
-are running.
-
-The Kubernetes cluster created by these templates is able to
-successfully run the [guestbook example][guestbook].
-
-[guestbook]: https://github.com/GoogleCloudPlatform/kubernetes/tree/master/examples/guestbook
-
-The cluster is based on Fedora 20, and makes use of the
-[walters/atomic-next][] [COPR][] repository.
-
-**NB**: Fedora 20 initially shipped with a kernel that does not have
-the necessary support for vxlan to work correctly.  If you are using
-this image you will need to reboot your minions in order for things to
-work correctly.  You should create an updated Fedora 20 image with a
-newer kernel.
-
-These templates are designed to work with the Icehouse version of
-Heat, with https://review.openstack.org/#/c/121139/ applied (this
-corrects a bug with template validation when using the "Fn::Join"
-function).
-
 [heat]: https://wiki.openstack.org/wiki/Heat
 [kubernetes]: https://github.com/GoogleCloudPlatform/kubernetes
-[walters/atomic-next]: https://copr.fedoraproject.org/coprs/walters/atomic-next/
-[copr]: https://copr.fedoraproject.org/
 
-Creating the stack
-==================
+The cluster uses [Flannel][] to provide an overlay network connecting
+pods deployed on different minions.
+
+[flannel]: https://github.com/coreos/flannel
+
+## Requirements
+
+### OpenStack
+
+These templates will work with the Juno version of Heat.
+
+### Guest image
+
+These templates will work with either CentOS Atomic Host or Fedora 21
+Atomic.  You will need an image dated later than 2015-01-01, or you
+will need to create an image that includes Flannel by booting an
+existing image, running `atomic ugprade`, and saving the new image.
+
+## Creating the stack
 
 Creating an environment file `local.yaml` with parameters specific to
 your environment:
@@ -46,6 +35,7 @@ your environment:
       ssh_key_name: lars
       external_network_id: 028d70dd-67b8-4901-8bdd-0c62b06cce2d
       dns_nameserver: 192.168.200.1
+      server_image: centos-7-atomic-20150101
 
 And then create the stack, referencing that environment file:
 
@@ -55,16 +45,9 @@ You must provide values for:
 
 - `ssh_key_name`
 - `external_network_id`
+- `server_image`
 
-You will *probably* need to override the `server_image` default value,
-as well.
-
-Interacting with Kubernetes
-===========================
-
-**NB**: You will be able to log into the servers before Kubernetes is
-ready; you can tail the `/var/log/cloud-init.log` file to see when the
-software install and configuration is complete.
+## Interacting with Kubernetes
 
 You can get the ip address of the Kubernetes master using the `heat
 output-show` command:
@@ -72,15 +55,57 @@ output-show` command:
     $ heat output-show my-kube-cluster kube_master
     "192.168.200.86"
 
-You can ssh into that server as the `fedora` user:
+You can ssh into that server as the `minion` user:
 
-    $ ssh fedora@192.168.200.86
+    $ ssh minion@192.168.200.86
 
-And once logged in you can run `kubecfg`, etc:
+And once logged in you can run `kubectl`, etc:
 
-    $ kubecfg list minions
-    Minion identifier
-    ----------
-    10.0.0.4
-    10.0.0.5
+    $ kubectl get minions
+    NAME                LABELS
+    10.0.0.4            <none>
+
+You can log into your minions using the `minion` user as well.  You
+can get a list of minion addresses by running:
+
+    $ heat output-show my-kube-cluster kube_minions_external
+    [
+      "192.168.200.182"
+    ]
+
+## Testing
+
+The templates install an example Pod and Service description into
+`/etc/kubernetes/examples`.  You can deploy this with the following
+commands:
+
+    $ kubectl create -f /etc/kubernetes/examples/web.service
+    $ kubectl create -f /etc/kubernetes/examples/web.pod
+
+This will deploy a minimal webserver and a service.  You can use
+`kubectl get pods` and `kubectl get services` to see the results of
+these commands.
+
+## License
+
+Copyright 2014 Lars Kellogg-Stedman <lars@redhat.com>
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use these files except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+## Contact
+
+Please report bugs using the [GitHub issue tracker][] at
+https://github.com/larsks/heat-kubernetes/issues.
+
+[github issue tracker]: https://github.com/larsks/heat-kubernetes/issues
 
