@@ -26,6 +26,11 @@ Atomic.  You will need an image dated later than 2015-01-01, or you
 will need to create an image that includes Flannel by booting an
 existing image, running `atomic ugprade`, and saving the new image.
 
+You can enable the VXLAN backend for flannel by setting the
+"flannel_use_vxlan" parameter to "true", but I have run into kernel
+crashes using that backend with CentOS 7.  It seems to work fine with
+Fedora 21.
+
 ## Creating the stack
 
 Creating an environment file `local.yaml` with parameters specific to
