@@ -8,8 +8,8 @@ fi
 
 # Generate a flannel configuration that we will
 # store into etcd using curl.
-cat > /etc/sysconfig/flannel-network <<EOF
-value={
+cat > /etc/sysconfig/flannel-network.json <<EOF
+{
   "Network": "$FLANNEL_NETWORK_CIDR",
   "Subnetlen": $FLANNEL_NETWORK_SUBNETLEN${use_vxlan:+",
   "Backend": {
@@ -28,6 +28,6 @@ done
 echo "creating flanneld config in etcd"
 curl -sf -L http://localhost:4001/v2/keys/coreos.com/network/config \
   -X PUT \
-  -d @/etc/sysconfig/flannel-network
+  --data-urlencode value@/etc/sysconfig/flannel-network.json
 
 
