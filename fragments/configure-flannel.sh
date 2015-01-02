@@ -2,16 +2,12 @@
 
 . /etc/sysconfig/heat-params
 
-# wait for etcd to become active (we will need it to push the flanneld config)
-while ! curl -sf http://localhost:4001/v2/keys/; do
-  echo "waiting for etcd"
-  sleep 1
-done
-
 if [ "$FLANNEL_USE_VXLAN" == "true" ]; then
 	use_vxlan=1
 fi
 
+# Generate a flannel configuration that we will
+# store into etcd using curl.
 cat > /etc/sysconfig/flannel-network <<EOF
 value={
   "Network": "$FLANNEL_NETWORK_CIDR",
@@ -21,6 +17,12 @@ value={
   }"}
 }
 EOF
+
+# wait for etcd to become active (we will need it to push the flanneld config)
+while ! curl -sf http://localhost:4001/v2/keys/; do
+  echo "waiting for etcd"
+  sleep 1
+done
 
 # put the flannel config in etcd
 echo "creating flanneld config in etcd"

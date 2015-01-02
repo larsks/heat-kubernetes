@@ -7,6 +7,10 @@ write_files:
     content: |
       #!/bin/sh
       
+      # This script waits for flannel to provide the /run/flannel/subnet.env
+      # file. This can be used to synchronize docker startup with the
+      # availability of this file.
+
       while ! [ -f /run/flannel/subnet.env ]; do
         echo "waiting for flanneld"
         sleep 1
