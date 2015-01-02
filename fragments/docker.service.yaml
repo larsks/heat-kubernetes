@@ -19,6 +19,9 @@ write_files:
       # This EnvironmentFile is required.
       EnvironmentFile=/run/flannel/subnet.env
 
+      # This works around https://github.com/docker/docker/issues/9468
+      Environment=DOCKER_CERT_PATH=/etc/docker
+
       ExecStart=/usr/bin/docker -d -H fd:// --bip $FLANNEL_SUBNET --mtu $FLANNEL_MTU $OPTIONS $DOCKER_STORAGE_OPTIONS
       Restart=on-failure
       LimitNOFILE=1048576
