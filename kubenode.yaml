@@ -121,12 +121,6 @@ resources:
       group: ungrouped
       config: {get_file: fragments/docker.service.yaml}
 
-  wait_for_flanneld:
-    type: "OS::Heat::SoftwareConfig"
-    properties:
-      group: ungrouped
-      config: {get_file: fragments/wait-for-flanneld.yaml}
-
   enable_services:
     type: "OS::Heat::SoftwareConfig"
     properties:
@@ -156,7 +150,6 @@ resources:
         - config: {get_resource: add_to_docker_group}
         - config: {get_resource: configure_kubernetes_minion}
         - config: {get_resource: docker_service}
-        - config: {get_resource: wait_for_flanneld}
         - config: {get_resource: enable_services}
         - config: {get_resource: cfn_signal}
 
