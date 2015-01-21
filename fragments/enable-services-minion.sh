@@ -7,6 +7,9 @@ echo "stopping docker"
 systemctl stop docker
 ip link del docker0
 
+# make sure we pick up any modified unit files
+systemctl daemon-reload
+
 for service in flanneld docker.socket docker kubelet kube-proxy; do
 	echo "activating service $service"
 	systemctl enable $service
