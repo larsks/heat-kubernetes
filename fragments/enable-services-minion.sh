@@ -7,7 +7,7 @@ echo "stopping docker"
 systemctl stop docker
 ip link del docker0
 
-for service in wait-for-flanneld flanneld docker.socket docker kubelet kube-proxy; do
+for service in flanneld docker.socket docker kubelet kube-proxy; do
 	echo "activating service $service"
 	systemctl enable $service
 	systemctl --no-block start $service
