@@ -276,6 +276,7 @@ resources:
       fixed_ips:
         - subnet_id:
             get_resource: fixed_subnet
+      replacement_policy: AUTO
 
   kube_master_floating:
     type: "OS::Neutron::FloatingIP"
