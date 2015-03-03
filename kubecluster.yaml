@@ -26,6 +26,11 @@ parameters:
     default: centos-atomic
     description: glance image used to boot the server
 
+  master_flavor:
+    type: string
+    default: m1.small
+    description: flavor to use when booting the server
+
   server_flavor:
     type: string
     default: m1.small
@@ -270,7 +275,7 @@ resources:
       image:
         get_param: server_image
       flavor:
-        get_param: server_flavor
+        get_param: master_flavor
       key_name:
         get_param: ssh_key_name
       user_data_format: RAW
