@@ -1,0 +1,28 @@
+#!/bin/sh
+
+TOPLEVEL=$(git rev-parse --show-toplevel)
+RES=0
+
+cd $TOPLEVEL
+
+if [ "$1" = "--install" ]; then
+    ln -sf ../../tools/pre-commit-hook .git/hooks/pre-commit
+    exit
+fi
+
+tmpdir=$(mktemp -d precommit.XXXXXX) || exit 1
+trap "rm -rf $TOPLEVEL/$tmpdir" 0
+
+git diff --cached --name-only --diff-filter=ACMR |
+    xargs git checkout-index --prefix=$tmpdir/ --
+
+cd $tmpdir
+
+echo "=== yaml checks ==="
+
+(
+find . -name '*.yaml' -print0
+[ -d fragments ] &&
+	find fragments -type f | xargs grep -l '^#cloud-config'
+) | xargs -0 python ${TOPLEVEL}/tools/validate-yaml.py -v || exit 1
+
