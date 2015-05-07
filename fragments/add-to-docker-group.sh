@@ -10,5 +10,5 @@ fi
 # make 'minion' user a member of the dockerroot group
 # (so you can run docker commands as the 'minion' user)
 echo "adding 'minion' user to 'dockerroot' group"
-usermod -G dockerroot minion
+usermod -G dockerroot ec2-user
 
