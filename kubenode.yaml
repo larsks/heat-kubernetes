@@ -59,7 +59,7 @@ parameters:
     description: Subnet from which to allocate fixed addresses.
   metadata:
     type: json
-
+    description: metadata for ceilometer query
 
 resources:
 
@@ -171,6 +171,7 @@ resources:
       key_name: {get_param: ssh_key_name}
       networks:
       - port: {get_resource: kube_node_eth0}
+      metadata: {get_param: metadata}
       user_data_format: SOFTWARE_CONFIG
       user_data: {get_resource: kube_node_init}
 
