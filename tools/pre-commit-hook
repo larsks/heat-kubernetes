@@ -21,8 +21,6 @@ cd $tmpdir
 echo "=== yaml checks ==="
 
 (
-find . -name '*.yaml' -print0
-[ -d fragments ] &&
-	find fragments -type f | xargs grep -l '^#cloud-config'
+find * \( -name '*.yaml' -o -exec grep -q '^#cloud-config' \; \) -print0
 ) | xargs -0 python ${TOPLEVEL}/tools/validate-yaml.py -v || exit 1
 
