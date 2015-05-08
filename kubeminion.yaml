@@ -99,6 +99,12 @@ resources:
             "$WAIT_HANDLE": {get_resource: node_wait_handle}
             "$DOCKER_VOLUME": {get_resource: docker_volume}
 
+  atomic_upgrade:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/atomic-upgrade.yaml}
+
   add_to_docker_group:
     type: "OS::Heat::SoftwareConfig"
     properties:
@@ -110,6 +116,12 @@ resources:
     properties:
       group: ungrouped
       config: {get_file: fragments/configure-docker-storage.sh}
+
+  kube_register:
+    type: "OS::Heat::SoftwareConfig"
+    properties:
+      group: ungrouped
+      config: {get_file: fragments/kube-register.yaml}
 
   configure_kubernetes_minion:
     type: "OS::Heat::SoftwareConfig"
@@ -158,11 +170,13 @@ resources:
     properties:
       parts:
         - config: {get_resource: disable_selinux}
+        - config: {get_resource: atomic_upgrade}
         - config: {get_resource: write_heat_params}
         - config: {get_resource: kube_user}
         - config: {get_resource: kube_examples}
         - config: {get_resource: add_to_docker_group}
         - config: {get_resource: configure_docker_storage}
+        - config: {get_resource: kube_register}
         - config: {get_resource: configure_kubernetes_minion}
         - config: {get_resource: docker_service}
         - config: {get_resource: enable_services}
