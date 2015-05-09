@@ -1,4 +1,4 @@
-heat_template_version: 2013-05-23
+heat_template_version: 2014-10-16
 
 description: >
   This is a nested stack that defines a single Kubernetes minion,
@@ -55,6 +55,9 @@ parameters:
     type: number
     description : >
       timeout for the Wait Conditions
+  metadata:
+    type: json
+    description: metadata for ceilometer query
 
 resources:
 
@@ -198,6 +201,7 @@ resources:
         get_param: minion_flavor
       key_name:
         get_param: ssh_key_name
+      metadata: {get_param: metadata}
       user_data_format: RAW
       user_data: {get_resource: kube_minion_init}
       networks:
