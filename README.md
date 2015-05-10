@@ -36,7 +36,7 @@ your environment:
 
     parameters:
       ssh_key_name: lars
-      external_network_id: 028d70dd-67b8-4901-8bdd-0c62b06cce2d
+      external_network: public
       dns_nameserver: 192.168.200.1
       server_image: centos-7-atomic-20150101
 
