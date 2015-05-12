@@ -194,7 +194,7 @@ resources:
     type: OS::Nova::Server
     properties:
       image: {get_param: server_image}
-      flavor: {get_param: server_flavor}
+      flavor: {get_param: minion_flavor}
       key_name: {get_param: ssh_key_name}
       metadata: {get_param: metadata}
       user_data_format: RAW
