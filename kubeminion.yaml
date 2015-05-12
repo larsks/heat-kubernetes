@@ -78,6 +78,12 @@ resources:
         - protocol: tcp
         - protocol: udp
 
+  ######################################################################
+  #
+  # software configs.  these are components that are combined into
+  # a multipart MIME user-data archive.
+  #
+
   write_heat_params:
     type: OS::Heat::SoftwareConfig
     properties:
@@ -179,6 +185,11 @@ resources:
         - config: {get_resource: enable_services}
         - config: {get_resource: minion_wc_notify}
 
+  ######################################################################
+  #
+  # a single kubernetes minion.
+  #
+
   kube_minion:
     type: OS::Nova::Server
     properties:
@@ -206,6 +217,12 @@ resources:
     properties:
       floating_network: {get_param: external_network}
       port_id: {get_resource: kube_minion_eth0}
+
+  ######################################################################
+  #
+  # docker storage.  This allocates a cinder volume and attaches it
+  # to the minion.
+  #
 
   docker_volume:
     type: OS::Cinder::Volume
