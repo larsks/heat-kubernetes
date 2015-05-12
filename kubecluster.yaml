@@ -352,6 +352,12 @@ resources:
       cooldown: 60
       scaling_adjustment: -1
 
+  # NB: Looking at this alarm you might expect it to trigger if cpu_util is
+  # greater than 50% for one minute.  Unfortunately, the underlying
+  # cpu metric in most default configurations only updates every
+  # 10 minutes.  To modify the frequency of this metric, you will need
+  # to edit /etc/ceilometer/pipeline.yaml and change the "interval"
+  # key for "cpu" to "60".
   cpu_alarm_high:
     type: OS::Ceilometer::Alarm
     properties:
