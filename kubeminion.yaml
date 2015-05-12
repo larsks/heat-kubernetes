@@ -180,6 +180,7 @@ resources:
         - config: {get_resource: enable_services}
         - config: {get_resource: minion_wc_notify}
 
+  kube_minion:
     type: OS::Nova::Server
     properties:
       image: {get_param: server_image}
