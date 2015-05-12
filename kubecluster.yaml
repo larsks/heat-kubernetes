@@ -7,9 +7,6 @@ description: >
 
 parameters:
 
-  #
-  # REQUIRED PARAMETERS
-  #
   ssh_key_name:
     type: string
     description: name of ssh key to be provisioned on our server
@@ -18,9 +15,6 @@ parameters:
     type: string
     description: uuid/name of a network to use for floating ip addresses
 
-  #
-  # OPTIONAL PARAMETERS
-  #
   server_image:
     type: string
     default: centos-atomic
