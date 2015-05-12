@@ -108,6 +108,10 @@ resources:
       handle: {get_resource: master_wait_handle}
       timeout: {get_param: wait_condition_timeout}
 
+  ######################################################################
+  #
+  # network resources.  allocate a network and router for our server.
+  #
 
   fixed_network:
     type: OS::Neutron::Net
@@ -132,6 +136,11 @@ resources:
       router_id: {get_resource: extrouter}
       subnet: {get_resource: fixed_subnet}
 
+  ######################################################################
+  #
+  # security groups.  we need to permit network traffic of various
+  # sorts.
+  #
 
   secgroup_base:
     type: OS::Neutron::SecurityGroup
@@ -158,6 +167,12 @@ resources:
         - protocol: tcp
           port_range_min: 7001
           port_range_max: 7001
+
+  ######################################################################
+  #
+  # software configs.  these are components that are combined into
+  # a multipart MIME user-data archive.
+  #
 
   write_heat_params:
     type: OS::Heat::SoftwareConfig
@@ -255,6 +270,10 @@ resources:
         - config: {get_resource: kube_examples}
         - config: {get_resource: master_wc_notify}
 
+  ######################################################################
+  #
+  # kubernetes master server.
+  #
 
   kube_master:
     type: OS::Nova::Server
@@ -285,6 +304,13 @@ resources:
     properties:
       floating_network: {get_param: external_network}
       port_id: {get_resource: kube_master_eth0}
+
+  ######################################################################
+  #
+  # kubernetes minions. This is an autoscaling group that will initially
+  # create <number_of_minions> minions, and will scale up to
+  # <max_number_of_minions> based on CPU utilization.
+  #
 
   kube_minions:
     type: OS::Heat::AutoScalingGroup
