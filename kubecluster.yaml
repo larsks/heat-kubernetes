@@ -1,4 +1,4 @@
-heat_template_version: 2013-05-23
+heat_template_version: 2014-10-16
 
 description: >
   This template will boot a Kubernetes cluster with one or more
@@ -288,13 +288,12 @@ resources:
       port_id: {get_resource: kube_master_eth0}
 
   kube_minions:
-    type: OS::Heat::ResourceGroup
+    type: OS::Heat::AutoScalingGroup
     depends_on:
       - extrouter_inside
       - master_wait_condition
     properties:
-      count: {get_param: number_of_minions}
-      resource_def:
+      resource:
         type: kubeminion.yaml
         properties:
           ssh_key_name: {get_param: ssh_key_name}
@@ -307,6 +306,53 @@ resources:
           kube_allow_priv: {get_param: kube_allow_priv}
           docker_volume_size: {get_param: docker_volume_size}
           wait_condition_timeout: {get_param: wait_condition_timeout}
+          metadata: {"metering.stack": {get_param: "OS::stack_id"}}
+      min_size: 1
+      desired_capacity: {get_param: number_of_minions}
+      max_size: 10
+
+  scale_up_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: kube_minions}
+      cooldown: 60
+      scaling_adjustment: 1
+
+  scale_down_policy:
+    type: OS::Heat::ScalingPolicy
+    properties:
+      adjustment_type: change_in_capacity
+      auto_scaling_group_id: {get_resource: kube_minions}
+      cooldown: 60
+      scaling_adjustment: -1
+
+  cpu_alarm_high:
+    type: OS::Ceilometer::Alarm
+    properties:
+      description: Scale-up if the average CPU > 50% for 1 minute
+      meter_name: cpu_util
+      statistic: avg
+      period: 60
+      evaluation_periods: 1
+      threshold: 50
+      alarm_actions:
+        - {get_attr: [scale_up_policy, alarm_url]}
+      matching_metadata: {'metadata.user_metadata.stack': {get_param: "OS::stack_id"}}
+      comparison_operator: gt
+  cpu_alarm_low:
+    type: OS::Ceilometer::Alarm
+    properties:
+      description: Scale-down if the average CPU < 15% for 10 minutes
+      meter_name: cpu_util
+      statistic: avg
+      period: 600
+      evaluation_periods: 1
+      threshold: 15
+      alarm_actions:
+        - {get_attr: [scale_down_policy, alarm_url]}
+      matching_metadata: {'metadata.user_metadata.stack': {get_param: "OS::stack_id"}}
+      comparison_operator: lt
 
 outputs:
 
@@ -318,12 +364,12 @@ outputs:
       from outside the cluster.
 
   kube_minions:
-    value: {get_attr: [kube_minions, kube_minion_ip]}
+    value: {get_attr: [kube_minions, outputs_list, kube_minion_ip]}
     description: >
       This is a list of of the "private" addresses of all the Kubernetes minions.
 
   kube_minions_external:
-    value: {get_attr: [kube_minions, kube_minion_external_ip]}
+    value: {get_attr: [kube_minions, outputs_list, kube_node_external_ip]}
     description: >
       This is a list of of the "public" addresses of all the Kubernetes minions.  Use
       these addresses to, e.g., log into the minions.
