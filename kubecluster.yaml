@@ -36,10 +36,15 @@ parameters:
     default: 8.8.8.8
 
   number_of_minions:
-    type: string
-    description: how many kubernetes minions to spawn
+    type: number
+    description: how many kubernetes minions to spawn initially
     default: 1
   
+  max_number_of_minions:
+    type: number
+    description: maximum number of kubernetes minions to spawn
+    default: 10
+
   fixed_network_cidr:
     type: string
     description: network range for fixed ip network
@@ -303,7 +308,7 @@ resources:
           metadata: {"metering.stack": {get_param: "OS::stack_id"}}
       min_size: 1
       desired_capacity: {get_param: number_of_minions}
-      max_size: 10
+      max_size: {get_param: max_number_of_minions}
 
   scale_up_policy:
     type: OS::Heat::ScalingPolicy
