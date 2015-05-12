@@ -18,7 +18,6 @@ parameters:
 
   server_image:
     type: string
-    default: centos-atomic
     description: glance image used to boot the server
 
   master_flavor:
