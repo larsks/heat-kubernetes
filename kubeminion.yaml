@@ -57,6 +57,23 @@ parameters:
   metadata:
     type: json
     description: metadata for ceilometer query
+  rhn_register_host:
+    type: string
+    description: >
+      whether or not to try registering with RHN
+    default: false
+    constraints:
+      - allowed_values: [true, false]
+  rhn_username:
+    type: string
+    description: >
+      username to use for authenticating with RHN
+    default:
+  rhn_password:
+    type: string
+    description: >
+      password to use for authenticating with RHN
+    default:
 
 resources:
 
@@ -92,9 +109,21 @@ resources:
         str_replace:
           template: {get_file: fragments/write-heat-params.yaml}
           params:
-            $KUBE_ALLOW_PRIV: {get_param: kube_allow_priv}
-            $KUBE_MASTER_IP: {get_param: kube_master_ip}
-            $DOCKER_VOLUME: {get_resource: docker_volume}
+            "$KUBE_ALLOW_PRIV": {get_param: kube_allow_priv}
+            "$KUBE_MASTER_IP": {get_param: kube_master_ip}
+            "$DOCKER_VOLUME": {get_resource: docker_volume}
+
+  rhn_register:
+    type: OS::Heat::SoftwareConfig
+    properties:
+      group: ungrouped
+      config:
+        str_replace:
+          template: {get_file: fragments/rhn-register.yaml}
+          params:
+            "$RHN_REGISTER_HOST": {get_param: rhn_register_host}
+            "$RHN_USERNAME": {get_param: rhn_username}
+            "$RHN_PASSWORD": {get_param: rhn_password}
 
   atomic_upgrade:
     type: OS::Heat::SoftwareConfig
@@ -167,6 +196,7 @@ resources:
     properties:
       parts:
         - config: {get_resource: disable_selinux}
+        - config: {get_resource: rhn_register}
         - config: {get_resource: atomic_upgrade}
         - config: {get_resource: write_heat_params}
         - config: {get_resource: kube_user}
