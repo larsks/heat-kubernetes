@@ -57,4 +57,4 @@ write_files:
             containers:
               - name: stress
                 image: larsks/stress
-                command: ["--cpu", "1"]
+                args: ["--cpu", "1"]
