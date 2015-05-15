@@ -458,9 +458,3 @@ outputs:
     value: {get_attr: [kube_minions, outputs_list, kube_minion_ip]}
     description: >
       This is a list of of the "private" addresses of all the Kubernetes minions.
-
-  kube_minions_external:
-    value: {get_attr: [kube_minions, outputs_list, kube_node_external_ip]}
-    description: >
-      This is a list of of the "public" addresses of all the Kubernetes minions.  Use
-      these addresses to, e.g., log into the minions.
