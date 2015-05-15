@@ -116,6 +116,30 @@ parameters:
       password to use for authenticating with RHN
     default:
 
+  scale_up_period_length:
+    type: number
+    default: 60
+
+  scale_up_period_count:
+    type: number
+    default: 1
+
+  scale_up_threshold:
+    type: number
+    default: 60
+
+  scale_down_period_length:
+    type: number
+    default: 600
+
+  scale_down_period_count:
+    type: number
+    default: 1
+
+  scale_down_threshold:
+    type: number
+    default: 15
+
 resources:
 
   master_wait_handle:
@@ -397,12 +421,12 @@ resources:
   cpu_alarm_high:
     type: OS::Ceilometer::Alarm
     properties:
-      description: Scale-up if the average CPU > 60% for 1 minute
+      description: Scale-up if the average CPU > <scale_up_threshold>% for 1 minute
       meter_name: cpu_util
       statistic: avg
-      period: 60
-      evaluation_periods: 1
-      threshold: 60
+      period: {get_param: scale_up_period_length}
+      evaluation_periods: {get_param: scale_up_period_count}
+      threshold: {get_param: scale_up_threshold}
       alarm_actions:
         - {get_attr: [scale_up_policy, alarm_url]}
       matching_metadata: {'metadata.user_metadata.stack': {get_param: "OS::stack_id"}}
@@ -410,12 +434,12 @@ resources:
   cpu_alarm_low:
     type: OS::Ceilometer::Alarm
     properties:
-      description: Scale-down if the average CPU < 15% for 10 minutes
+      description: Scale-down if the average CPU < <scale_down_threshold>% for 10 minutes
       meter_name: cpu_util
       statistic: avg
-      period: 600
-      evaluation_periods: 1
-      threshold: 15
+      period: {get_param: scale_down_period_length}
+      evaluation_periods: {get_param: scale_down_period_count}
+      threshold: {get_param: scale_down_threshold}
       alarm_actions:
         - {get_attr: [scale_down_policy, alarm_url]}
       matching_metadata: {'metadata.user_metadata.stack': {get_param: "OS::stack_id"}}
