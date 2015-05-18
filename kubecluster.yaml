@@ -140,6 +140,14 @@ parameters:
     type: number
     default: 15
 
+  scale_up_cooldown:
+    type: number
+    default: 120
+
+  scale_down_cooldown:
+    type: number
+    default: 60
+
 resources:
 
   master_wait_handle:
@@ -401,7 +409,7 @@ resources:
     properties:
       adjustment_type: change_in_capacity
       auto_scaling_group_id: {get_resource: kube_minions}
-      cooldown: 60
+      cooldown: {get_param: scale_up_cooldown}
       scaling_adjustment: 1
 
   scale_down_policy:
@@ -409,7 +417,7 @@ resources:
     properties:
       adjustment_type: change_in_capacity
       auto_scaling_group_id: {get_resource: kube_minions}
-      cooldown: 60
+      cooldown: {get_param: scale_down_cooldown}
       scaling_adjustment: -1
 
   # NB: Looking at this alarm you might expect it to trigger if cpu_util is
