@@ -1,9 +1,9 @@
 heat_template_version: 2014-10-16
 
 description: >
-  This template will boot a Kubernetes cluster with one or more
-  minions (as specified by the number_of_minions parameter, which
-  defaults to 2).
+  This template will boot a Kubernetes cluster with a single master
+  and one or more nodes (as specified by the initial_nodes
+  parameter, which defaults to 1).
 
 parameters:
 
@@ -25,7 +25,7 @@ parameters:
     default: m1.small
     description: flavor to use when booting the server
 
-  minion_flavor:
+  node_flavor:
     type: string
     default: m1.small
     description: flavor to use when booting the server
@@ -35,14 +35,14 @@ parameters:
     description: address of a dns nameserver reachable in your environment
     default: 8.8.8.8
 
-  number_of_minions:
+  initial_nodes:
     type: number
-    description: how many kubernetes minions to spawn initially
+    description: how many kubernetes nodes to spawn initially
     default: 1
   
-  max_number_of_minions:
+  max_nodes:
     type: number
-    description: maximum number of kubernetes minions to spawn
+    description: maximum number of kubernetes nodes to spawn
     default: 10
 
   fixed_network_cidr:
@@ -63,7 +63,7 @@ parameters:
 
   flannel_network_subnetlen:
     type: string
-    description: size of subnet assigned to each minion
+    description: size of subnet assigned to each node
     default: 24
 
   flannel_use_vxlan:
@@ -108,13 +108,13 @@ parameters:
     type: string
     description: >
       username to use for authenticating with RHN
-    default:
+    default: ''
 
   rhn_password:
     type: string
     description: >
       password to use for authenticating with RHN
-    default:
+    default: ''
 
   scale_up_period_length:
     type: number
@@ -372,26 +372,26 @@ resources:
 
   ######################################################################
   #
-  # kubernetes minions. This is an autoscaling group that will initially
-  # create <number_of_minions> minions, and will scale up to
-  # <max_number_of_minions> based on CPU utilization.
+  # kubernetes nodes. This is an autoscaling group that will initially
+  # create <initial_nodes> nodes, and will scale up to
+  # <max_nodes> based on CPU utilization.
   #
 
-  kube_minions:
+  kube_nodes:
     type: OS::Heat::AutoScalingGroup
     depends_on:
       - extrouter_inside
       - master_wait_condition
     properties:
       resource:
-        type: kubeminion.yaml
+        type: kubenode.yaml
         properties:
           rhn_register_host: {get_param: rhn_register_host}
           rhn_username: {get_param: rhn_username}
           rhn_password: {get_param: rhn_password}
           ssh_key_name: {get_param: ssh_key_name}
           server_image: {get_param: server_image}
-          minion_flavor: {get_param: minion_flavor}
+          node_flavor: {get_param: node_flavor}
           fixed_network: {get_resource: fixed_network}
           fixed_subnet: {get_resource: fixed_subnet}
           kube_master_ip: {get_attr: [kube_master_eth0, fixed_ips, 0, ip_address]}
@@ -401,14 +401,14 @@ resources:
           wait_condition_timeout: {get_param: wait_condition_timeout}
           metadata: {"metering.stack": {get_param: "OS::stack_id"}}
       min_size: 1
-      desired_capacity: {get_param: number_of_minions}
-      max_size: {get_param: max_number_of_minions}
+      desired_capacity: {get_param: initial_nodes}
+      max_size: {get_param: max_nodes}
 
   scale_up_policy:
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: kube_minions}
+      auto_scaling_group_id: {get_resource: kube_nodes}
       cooldown: {get_param: scale_up_cooldown}
       scaling_adjustment: 1
 
@@ -416,7 +416,7 @@ resources:
     type: OS::Heat::ScalingPolicy
     properties:
       adjustment_type: change_in_capacity
-      auto_scaling_group_id: {get_resource: kube_minions}
+      auto_scaling_group_id: {get_resource: kube_nodes}
       cooldown: {get_param: scale_down_cooldown}
       scaling_adjustment: -1
 
@@ -458,11 +458,12 @@ outputs:
   kube_master:
     value: {get_attr: [kube_master_floating, floating_ip_address]}
     description: >
-      This is the "public" ip address of the Kubernetes master server.  Use this address to 
-      log in to the Kubernetes master via ssh or to access the Kubernetes API
-      from outside the cluster.
+      This is the "public" ip address of the Kubernetes master server.
+      Use this address to log in to the Kubernetes master via ssh or
+      to access the Kubernetes API from outside the cluster.
 
-  kube_minions:
-    value: {get_attr: [kube_minions, outputs_list, kube_minion_ip]}
+  kube_nodes:
+    value: {get_attr: [kube_nodes, outputs_list, kube_node_ip]}
     description: >
-      This is a list of of the "private" addresses of all the Kubernetes minions.
+      This is a list of of the "private" addresses of all the
+      Kubernetes nodes.
