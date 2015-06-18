@@ -126,7 +126,7 @@ parameters:
 
   scale_up_threshold:
     type: number
-    default: 60
+    default: 70
 
   scale_down_period_length:
     type: number
