@@ -409,7 +409,7 @@ resources:
           docker_volume_size: {get_param: docker_volume_size}
           wait_condition_timeout: {get_param: wait_condition_timeout}
           metadata: {"metering.stack": {get_param: "OS::stack_id"}}
-      min_size: 1
+      min_size: {get_param: initial_nodes}
       desired_capacity: {get_param: initial_nodes}
       max_size: {get_param: max_nodes}
 
