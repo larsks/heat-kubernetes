@@ -203,6 +203,14 @@ resources:
           port_range_min: 22
           port_range_max: 22
 
+  secgroup_all_open:
+    type: OS::Neutron::SecurityGroup
+    properties:
+      rules:
+        - protocol: icmp
+        - protocol: tcp
+        - protocol: udp
+
   secgroup_kubernetes:
     type: OS::Neutron::SecurityGroup
     properties:
@@ -360,6 +368,7 @@ resources:
       security_groups:
         - {get_resource: secgroup_base}
         - {get_resource: secgroup_kubernetes}
+        - {get_resource: secgroup_all_open}
       fixed_ips:
         - subnet: {get_resource: fixed_subnet}
       replacement_policy: AUTO
