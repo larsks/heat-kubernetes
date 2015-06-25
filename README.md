@@ -1,55 +1,80 @@
-A Kubernetes cluster with Heat
-==============================
+Deploying Atomic + Kubernetes with Heat
+=======================================
 
-These [Heat][] templates will deploy a [Kubernetes][] cluster that
-supports automatic scaling based on CPU load.
+These [Heat][] templates will deploy a cluster of Nova instances
+running [Kubernetes][] on top of [Project Atomic][].  The cluster uses
+[Flannel][] to provide an overlay network connecting pods deployed on
+different nodes.
+
+You can determine the initial size of the cluster via a configuration
+parameter when you deploy it, and the cluster will scale dynamically
+(up to a specified maximum size) due to CPU load on the Kubernetes
+nodes.
 
 [heat]: https://wiki.openstack.org/wiki/Heat
 [kubernetes]: https://github.com/GoogleCloudPlatform/kubernetes
-
-The cluster uses [Flannel][] to provide an overlay network connecting
-pods deployed on different minions.
-
+[project atomic]: http://www.projectatomic.io/
 [flannel]: https://github.com/coreos/flannel
 
 ## Requirements
 
 ### OpenStack
 
-These templates will work with the Kilo version of Heat.  They *may*
-work with Juno as well as soon as [#1402894][] is resolved.
+These templates will work with the Kilo version of Heat.
+They will work with the Juno version of Heat as long as you have a
+release that includes [this fix][] for bug [#1402894][].
 
+[this fix]: https://review.openstack.org/#/c/182446/
 [#1402894]: https://bugs.launchpad.net/heat/+bug/1402894
+
+You should deploy some simple stacks in your environment to ensure
+that Heat is configured correctly before attempting to use these
+templates.
 
 ### Guest image
 
-These templates will work with either CentOS Atomic Host or Fedora 21
-Atomic.
+These templates require an Atomic disk image.  You can obtain disk
+images from [Project Atomic][], as well as directly from [Fedora][]
+and from [Red Hat][].
 
-You can enable the VXLAN backend for flannel by setting the
-"flannel_use_vxlan" parameter to "true", but I have run into kernel
-crashes using that backend with CentOS 7.  It seems to work fine with
-Fedora 21.
+[fedora]: https://getfedora.org/en/cloud/download/atomic.html
+[red hat]: https://access.redhat.com/articles/rhel-atomic-getting-started
+
+These templates are known to work with RHEL Atomic 7.1.2 and Fedora 22
+Atomic.
 
 ## Creating the stack
 
-Creating an environment file `local.yaml` with parameters specific to
-your environment:
+These templates define several parameters that can be used to
+configure the stack; for details see the `parameters` section of
+`kubecluster.yaml`.  While many of the parameters have reasonable
+defaults, you will need to provide values for:
+
+- `ssh_key_name` -- the name of an SSH key already installed in Nova
+  that will be used for accessing your Kubernetes nodes.
+
+- `server_image` -- the name of an image in Glance that will be used
+  to instantiate the nodes.
+
+You may need to provide a value for:
+
+- `dns_nameserver` -- a nameserver that is reachable in your
+  environment.  This defaults to one of the public Google nameservers
+  (8.8.8.8), which may not be accessible (or useful) in some internal
+  environments.
+
+To provide the parameter values to the template you will create an
+environment file that may look something like this:
 
     parameters:
       ssh_key_name: lars
-      external_network: public
-      dns_nameserver: 192.168.200.1
-      server_image: centos-7-atomic-20150101
+      server_image: fedora-atomic
+      dns_nameserver: 192.168.122.1
 
-And then create the stack, referencing that environment file:
+You will provide this file via the `-e` argument to `heat
+stack-create`:
 
-    heat stack-create -f kubecluster.yaml -e local.yaml my-kube-cluster
-
-You must provide values for:
-
-- `ssh_key_name`
-- `server_image`
+    heat stack-create -f kubecluster.yaml -e params.yaml my-kube-cluster
 
 ## Interacting with Kubernetes
 
@@ -63,14 +88,15 @@ You can ssh into that server as the `minion` user:
 
     $ ssh minion@192.168.200.86
 
-And once logged in you can run `kubectl`, etc:
+And once logged in you can run `kubectl` to interact with the
+Kubernetes API:
 
     $ kubectl get minions
     NAME                LABELS       STATUS
     10.0.0.4            <none>       Ready
 
-You can log into your minions using the `minion` user as well.  You
-can get a list of minion addresses by running:
+You can log into your nodes using the `minion` user as well.  You
+can get a list of node addresses by running:
 
     $ heat output-show my-kube-cluster kube_minions_external
     [
@@ -79,16 +105,16 @@ can get a list of minion addresses by running:
 
 ## Testing
 
-The templates install an example Pod and Service description into
+The templates install some example Pod and Service descriptions into
 `/etc/kubernetes/examples`.  You can deploy this with the following
 commands:
 
     $ kubectl create -f /etc/kubernetes/examples/web.service
-    $ kubectl create -f /etc/kubernetes/examples/web.pod
+    $ kubectl create -f /etc/kubernetes/examples/web.replica
 
-This will deploy a minimal webserver and a service.  You can use
-`kubectl get pods` and `kubectl get services` to see the results of
-these commands.
+This will deploy a minimal webserver and a corresponding service.  You
+can use `kubectl get pods` and `kubectl get services` to see the
+results of these commands.
 
 ## License
 
