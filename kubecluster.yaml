@@ -39,7 +39,7 @@ parameters:
     type: number
     description: how many kubernetes nodes to spawn initially
     default: 1
-  
+
   max_nodes:
     type: number
     description: maximum number of kubernetes nodes to spawn
@@ -71,17 +71,17 @@ parameters:
     description: >
       if true use the vxlan backend, otherwise use the default
       udp backend
-    default: false
+    default: "false"
     constraints:
-      - allowed_values: [true, false]
+      - allowed_values: ["true", "false"]
 
   kube_allow_priv:
     type: string
     description: >
       whether or not kubernetes should permit privileged containers.
-    default: true
+    default: "true"
     constraints:
-      - allowed_values: [true, false]
+      - allowed_values: ["true", "false"]
 
   docker_volume_size:
     type: number
@@ -100,9 +100,9 @@ parameters:
     type: string
     description: >
       whether or not to try registering with RHN
-    default: false
+    default: "false"
     constraints:
-      - allowed_values: [true, false]
+      - allowed_values: ["true", "false"]
 
   rhn_username:
     type: string
